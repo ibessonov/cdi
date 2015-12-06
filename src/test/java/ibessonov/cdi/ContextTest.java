@@ -8,7 +8,7 @@ import ibessonov.cdi.internal.$Generic;
 import org.junit.Before;
 import org.junit.Test;
 
-import static ibessonov.cdi.Context.getTypeParameter;
+import static ibessonov.cdi.util.Cdi.getTypeParameter;
 import static ibessonov.cdi.enums.Scope.SINGLETON;
 import static ibessonov.cdi.enums.Scope.STATELESS;
 import static org.junit.Assert.*;
@@ -29,15 +29,23 @@ public class ContextTest {
     public static class Singleton {
 
         @Inject
-        public Singleton instance;
+        Singleton instance;
 
         @Inject
-        public GenericClass<String> generic;
+        GenericClass<String> generic;
     }
 
     @Generic
     @Scoped(STATELESS)
     public static class GenericClass<T> {
+
+        @Inject
+        GenericInnerClass<T> value;
+    }
+
+    @Generic
+    @Scoped(STATELESS)
+    public static class GenericInnerClass<T> {
     }
 
     @Test
@@ -49,6 +57,10 @@ public class ContextTest {
         assertNotEquals(GenericClass.class, singleton.generic.getClass());
         assertTrue(singleton.generic instanceof $Generic);
         assertEquals(String.class, getTypeParameter(singleton.generic));
+
+        assertNotEquals(GenericInnerClass.class, singleton.generic.value.getClass());
+        assertTrue(singleton.generic.value instanceof $Generic);
+        assertEquals(String.class, getTypeParameter(singleton.generic.value));
     }
 
     @Scoped(STATELESS)
@@ -67,5 +79,19 @@ public class ContextTest {
         WithConstructor withConstructor = context.lookup(WithConstructor.class);
 
         assertEquals(15, withConstructor.value);
+    }
+
+    @Scoped(STATELESS)
+    public static class WithContext {
+
+        @Inject
+        Context context;
+    }
+
+    @Test
+    public void context() {
+        WithContext withContext = context.lookup(WithContext.class);
+
+        assertSame(context, withContext.context);
     }
 }

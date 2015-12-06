@@ -1,92 +1,110 @@
 package ibessonov.cdi;
 
-import ibessonov.cdi.annotations.Inject;
 import ibessonov.cdi.annotations.Scoped;
+import ibessonov.cdi.enums.Scope;
+import ibessonov.cdi.exceptions.ImpossibleException;
 import ibessonov.cdi.internal.$Constructable;
-import ibessonov.cdi.internal.$Generic;
-import ibessonov.cdi.internal.$WithContext;
 import ibessonov.cdi.reflection.InheritorGenerator;
 
-import java.lang.reflect.*;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.stream.Stream;
+import java.lang.reflect.Constructor;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import static ibessonov.cdi.reflection.InheritorGenerator.PROXY_SUFFIX;
-import static ibessonov.cdi.reflection.ReflectionUtil.invoke;
+import static ibessonov.cdi.enums.Scope.SINGLETON;
 import static ibessonov.cdi.reflection.ReflectionUtil.newInstance;
-import static ibessonov.cdi.util.Util.privileged;
-import static ibessonov.cdi.util.Util.silent;
-import static java.lang.reflect.AccessibleObject.setAccessible;
+import static ibessonov.cdi.util.Cdi.silent;
 
 /**
  * @author ibessonov
  */
-public class Context {
+@Scoped(SINGLETON)
+public final class Context {
 
-    public static Class<?> getTypeParameter(Object object) {
-        return (($Generic) object).$typeParameter();
-    }
-
-    public static Context getContext(Object object) {
-        return (($WithContext) object).$context();
-    }
-
-    private final Map<Class, Object> singletons = new IdentityHashMap<>();
-    private final Map<Class, Consumer> injectors = new IdentityHashMap<>();
-    private final ThreadLocal<Map> dejaVu = ThreadLocal.withInitial(HashMap::new);
-
-    public <T, V> T lookup(Class<T> clazz, Class<V> parameter) {
-        return lookup(clazz, () -> instantiateGeneric(clazz, parameter));
+    public <T, V> T lookup(Class<T> clazz, Class<V> param) {
+        return lookup0(clazz, new GenericClassDescriptor(clazz, param));
     }
 
     public <T> T lookup(Class<T> clazz) {
-        return lookup(clazz, () -> instantiate(clazz));
+        return lookup0(clazz, clazz);
     }
 
-    private <T> T lookup(Class<T> clazz, Supplier<T> instantiator) {
-        T object = (T) singletons.get(clazz);
+    private <T> T lookup0(Class<T> clazz, Object descriptor) {
+        if (clazz.isPrimitive()) throw new RuntimeException();
+
+        Scope scope = scope(clazz);
+        if (scope == null) {
+            return newInstance(clazz);
+        }
+        switch (scope) {
+            case SINGLETON:
+                return lookupSingleton(clazz, descriptor);
+            case STATELESS:
+                return lookupStateless(clazz, descriptor);
+            case REQUEST:
+                return lookupRequestScoped(clazz, descriptor);
+            default:
+                throw new ImpossibleException();
+        }
+    }
+
+    private final Map<Class, Object> singletons = new IdentityHashMap<>();
+    private final ReadWriteLock      rwLock     = new ReentrantReadWriteLock();
+    private <T> T lookupSingleton(Class<T> clazz, Object descriptor) {
+        rwLock.readLock().lock();
+        Object object = singletons.get(clazz);
+        rwLock.readLock().unlock();
+
         if (object == null) {
-            object = instantiator.get();
-            singletons.put(clazz, object);
-            requestInjection(object);
-
-            invokeConstructor(object);
+            rwLock.writeLock().lock();
+            try {
+                if ((object = singletons.get(clazz)) == null) {
+                    object = instantiate(descriptor);
+                    singletons.put(clazz, object);
+                    try {
+                        construct(object);
+                    } catch (RuntimeException | Error e) {
+                        singletons.remove(clazz);
+                        throw e;
+                    }
+                }
+            } finally {
+                rwLock.writeLock().unlock();
+            }
         }
-        return object;
+        return clazz.cast(object);
     }
 
-    public void requestInjection(Object object) {
-        Class<?> clazz = object.getClass();
-//        if (isProxy(clazz)) {
-//            construct(object);
-//        } else {
-            Consumer injector = getInjector(unproxy(clazz));
-            injector.accept(object);
-            invokeConstructor(object);
-//        }
+    private final ThreadLocal<Map<Object, Object>> dejaVu = ThreadLocal.withInitial(WeakHashMap::new);
+    private <T> T lookupStateless(Class<T> clazz, Object descriptor) {
+        Map<Object, Object> dejaVu = this.dejaVu.get();
+        Object object = dejaVu.get(descriptor);
+        if (object == null) {
+            object = instantiate(descriptor);
+            dejaVu.put(descriptor, object);
+            construct(object);
+        }
+        return clazz.cast(object);
     }
 
-    private void invokeConstructor(Object object) {
-        Class clazz = unproxy(object.getClass());
-        Method[] methods = Stream.of(clazz.getDeclaredMethods()).filter(
-                m -> m.isAnnotationPresent(ibessonov.cdi.annotations.Constructor.class)
-        ).toArray(Method[]::new);
-        if (methods.length < 1) return;
-        if (methods.length > 1) throw new RuntimeException();
-        Method method = methods[0];
-        if (!method.isAccessible()) privileged(() -> method.setAccessible(true));
-        int parameterCount = method.getParameterCount();
-        Object[] parameters = new Object[parameterCount];
-        Class<?>[] parameterTypes = method.getParameterTypes();
-        for (int i = 0; i < parameterCount; i++) {
-            Class c = parameterTypes[i];
-            parameters[i] = lookup(c);
+    public void startRequest() {}
+
+    public void finishRequest() {
+        requestScoped.get().clear();
+    }
+
+    private final ThreadLocal<Map<Object, Object>> requestScoped = ThreadLocal.withInitial(HashMap::new);
+    private <T> T lookupRequestScoped(Class<T> clazz, Object descriptor) {
+        Map<Object, Object> requestScoped = this.requestScoped.get();
+        Object object = requestScoped.get(descriptor);
+        if (object == null) {
+            object = instantiate(descriptor);
+            requestScoped.put(descriptor, object);
+            construct(object);
         }
-        invoke(method, object, parameters);
+        return clazz.cast(object);
     }
 
     private void construct(Object object) {
@@ -99,69 +117,70 @@ public class Context {
         return newInstance(proxy(clazz));
     }
 
-    private <T, V> T instantiateGeneric(Class<T> clazz, Class<V> parameter) {
-        return silent(() -> {
-            Class<? extends T> proxy = proxy(clazz);
-            Constructor<? extends T> ctr = proxy.getConstructor(Class.class);
-            if (!ctr.isAccessible()) privileged(() -> ctr.setAccessible(true));
-            return ctr.newInstance(parameter);
-        });
-    }
-
-    private Consumer getInjector(Class clazz) {
-        Consumer injector = injectors.get(clazz);
-        if (injector == null) {
-            Field[] fields = Stream.of(clazz.getDeclaredFields()).filter(Context::injectable).toArray(Field[]::new);
-            privileged(() -> setAccessible(fields, true));
-            Consumer[] consumers = Stream.of(fields).map(field -> {
-                Class<?> type = field.getType();
-                Type genericType = field.getGenericType();
-                if (genericType != type) {
-                    ParameterizedType pType = (ParameterizedType) genericType;
-                    Type[] actualTypeArguments = pType.getActualTypeArguments();
-                    if (actualTypeArguments.length == 1) {
-                        Type actualTypeArgument = actualTypeArguments[0];
-                        Class parameter;
-                        if (actualTypeArgument instanceof ParameterizedType) {
-                            parameter = (Class) ((ParameterizedType) actualTypeArgument).getRawType();
-                            System.out.println("Wow!");
-                        } else {
-                            parameter = (Class) actualTypeArgument;
-                        }
-                        return (Consumer) (o -> silent(() -> field.set(o, lookup(type, parameter))));
-                    }
-                }
-                return (Consumer) (o -> silent(() -> field.set(o, lookup(type))));
-            }).toArray(Consumer[]::new);
-            injector = o -> { for (Consumer c : consumers) c.accept(o); };
-            injectors.put(clazz, injector);
+    private Object instantiate(Object descriptor) {
+        if (descriptor instanceof Class) {
+            return instantiate((Class<?>) descriptor);
+        } else {
+            GenericClassDescriptor gcd = (GenericClassDescriptor) descriptor;
+            return silent(() -> {
+                Class<?> proxy = proxy(gcd.clazz);
+                Constructor<?> ctr = proxy.getConstructor(Class.class);
+                return ctr.newInstance(gcd.param);
+            });
         }
-        return injector;
     }
 
-    private static boolean injectable(Field field) {
-        return field.isAnnotationPresent(Inject.class);
-    }
-
-//    private static boolean generic(Class clazz) {
-//        if (!$Generic.class.isAssignableFrom(clazz)) return false;
-//        if (Arrays.asList(clazz.getGenericInterfaces()).contains($Generic.class)) return false;
-//        return clazz.getTypeParameters().length == 1;
-//    }
-
+    private static final Map<Class, Class<?>> defaults = new IdentityHashMap<>();
     private <T> Class<? extends T> proxy(Class<T> clazz) {
         if (clazz.isAnnotationPresent(Scoped.class)) {
             return InheritorGenerator.getSubclass(clazz);
+        } else if (clazz.isInterface()) {
+            return defaults.getOrDefault(clazz, clazz).asSubclass(clazz);
         } else {
             return clazz;
         }
     }
 
-    private static Class unproxy(Class clazz) {
-        return isProxy(clazz) ? clazz.getSuperclass() : clazz;
+    private Scope scope(Class<?> clazz) {
+        Scoped scoped = clazz.getAnnotation(Scoped.class);
+        return (scoped == null) ? null : scoped.value();
     }
 
-    private static boolean isProxy(Class clazz) {
-        return clazz.getName().endsWith(PROXY_SUFFIX);
+    private static final class GenericClassDescriptor {
+        public final Class<?> clazz;
+        public final Class<?> param;
+
+        public GenericClassDescriptor(Class<?> clazz, Class<?> param) {
+            this.clazz = clazz;
+            this.param = param;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof GenericClassDescriptor)) return false;
+
+            GenericClassDescriptor that = (GenericClassDescriptor) obj;
+            return this.clazz == that.clazz && this.param == that.param;
+        }
+
+        @Override
+        public int hashCode() {
+            return clazz.hashCode() ^ param.hashCode();
+        }
+    }
+
+    private static <T> void bind(Class<T> sup, Class<? extends T> sub) {
+        defaults.put(sup, sub);
+    }
+
+    static {
+        bind(List.class, ArrayList.class);
+        bind(Map.class, HashMap.class);
+        bind(SortedMap.class, TreeMap.class);
+        bind(ConcurrentMap.class, ConcurrentHashMap.class);
+    }
+
+    {
+        singletons.put(Context.class, this);
     }
 }

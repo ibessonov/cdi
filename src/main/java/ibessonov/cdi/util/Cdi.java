@@ -1,5 +1,7 @@
 package ibessonov.cdi.util;
 
+import ibessonov.cdi.internal.$Generic;
+
 import java.security.PrivilegedAction;
 import java.util.concurrent.Callable;
 
@@ -8,13 +10,13 @@ import static java.security.AccessController.doPrivileged;
 /**
  * @author ibessonov
  */
-public class Util {
+public final class Cdi {
 
     public static <T> T silent(Callable<T> c) {
         try {
             return c.call();
         } catch (Exception e) {
-            throw e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(e);
+            throw toRuntimeException(e);
         }
     }
 
@@ -22,7 +24,7 @@ public class Util {
         try {
             r.run();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw toRuntimeException(e);
         }
     }
 
@@ -38,6 +40,14 @@ public class Util {
 
     public static void throwQuite(Throwable throwable) {
         throwQuite0(throwable);
+    }
+
+    public static Class<?> getTypeParameter(Object object) {
+        return (($Generic) object).$typeParameter();
+    }
+
+    private static RuntimeException toRuntimeException(Exception e) {
+        return (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
     }
 
     @SuppressWarnings("unchecked")
