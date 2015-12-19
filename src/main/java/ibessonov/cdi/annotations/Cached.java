@@ -11,5 +11,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  */
 @Target(METHOD)
 @Retention(RUNTIME)
-public @interface Constructor {
+public @interface Cached {
+    boolean concurrent() default false;
 }

@@ -1,11 +1,14 @@
 package ibessonov.cdi.reflection;
 
-import ibessonov.cdi.exceptions.ImpossibleException;
+import ibessonov.cdi.exceptions.CdiException;
+import ibessonov.cdi.exceptions.ImpossibleError;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
+import static ibessonov.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
 import static ibessonov.cdi.util.Cdi.*;
 
 /**
@@ -17,8 +20,8 @@ public class ReflectionUtil {
         try {
             return clazz.getDeclaredField(name);
         } catch (Throwable t) {
-            throwQuite(t);
-            throw new ImpossibleException();
+            throwUnchecked(t);
+            throw new ImpossibleError();
         }
     }
 
@@ -28,8 +31,8 @@ public class ReflectionUtil {
             privileged(() -> field.setAccessible(true));
             return field;
         } catch (Throwable t) {
-            throwQuite(t);
-            throw new ImpossibleException();
+            throwUnchecked(t);
+            throw new ImpossibleError();
         }
     }
 
@@ -39,8 +42,8 @@ public class ReflectionUtil {
             privileged(() -> method.setAccessible(true));
             return method;
         } catch (Throwable t) {
-            throwQuite(t);
-            throw new ImpossibleException();
+            throwUnchecked(t);
+            throw new ImpossibleError();
         }
     }
 
@@ -48,19 +51,35 @@ public class ReflectionUtil {
         return silent(clazz::newInstance);
     }
 
+    public static <T> T newInstance(Constructor<T> ctr, Object... args) {
+        try {
+            return ctr.newInstance(args);
+        } catch (InstantiationException ie) {
+            throw new ImpossibleError(ie);
+        } catch (IllegalAccessException iae) {
+            throw new CdiException(ILLEGAL_ACCESS);
+        } catch (InvocationTargetException ite) {
+            Throwable cause = ite.getTargetException();
+            throwIfRuntime(cause);
+            throw new ImpossibleError(cause);
+        }
+    }
+
     public static Object invoke(Method method, Object object, Object... parameters) {
         try {
             return method.invoke(object, parameters);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-        } catch (InvocationTargetException e) {
-            Throwable targetException = e.getTargetException();
-            if (targetException instanceof RuntimeException) {
-                throw (RuntimeException) targetException;
-            } else {
-                throw new RuntimeException(targetException);
-            }
+        } catch (IllegalAccessException iae) {
+            throw new CdiException(ILLEGAL_ACCESS);
+        } catch (InvocationTargetException ite) {
+            Throwable cause = ite.getTargetException();
+            throwIfRuntime(cause);
+            throw new ImpossibleError(cause);
         }
+    }
+
+    private static void throwIfRuntime(Throwable t) {
+        if (t instanceof RuntimeException) throw (RuntimeException) t;
+        if (t instanceof Error) throw (Error) t;
     }
 
     private ReflectionUtil() {

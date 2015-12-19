@@ -13,7 +13,7 @@ class CdiFileManager extends ForwardingJavaFileManager<JavaFileManager> {
 
     private final CompiledCode code;
 
-    protected CdiFileManager(JavaFileManager fileManager, CompiledCode code) {
+    CdiFileManager(JavaFileManager fileManager, CompiledCode code) {
         super(fileManager);
         this.code = code;
     }

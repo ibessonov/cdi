@@ -1,16 +1,18 @@
 package ibessonov.cdi;
 
 import ibessonov.cdi.annotations.Constructor;
-import ibessonov.cdi.annotations.Generic;
 import ibessonov.cdi.annotations.Inject;
 import ibessonov.cdi.annotations.Scoped;
-import ibessonov.cdi.internal.$Generic;
+import ibessonov.cdi.internal.$CdiObject;
+import ibessonov.cdi.util.Lazy;
 import org.junit.Before;
 import org.junit.Test;
 
-import static ibessonov.cdi.util.Cdi.getTypeParameter;
+import java.io.Serializable;
+import java.util.List;
+
 import static ibessonov.cdi.enums.Scope.SINGLETON;
-import static ibessonov.cdi.enums.Scope.STATELESS;
+import static ibessonov.cdi.util.Cdi.getTypeParameters;
 import static org.junit.Assert.*;
 
 /**
@@ -18,34 +20,24 @@ import static org.junit.Assert.*;
  */
 public class ContextTest {
 
-    private Context context;
+    private ContextImpl context;
 
     @Before
     public void setUp() {
-        context = new Context();
+        context = new ContextImpl();
     }
 
     @Scoped(SINGLETON)
-    public static class Singleton {
-
-        @Inject
-        Singleton instance;
-
-        @Inject
-        GenericClass<String> generic;
+    static class Singleton {
+        @Inject Singleton instance;
+        @Inject GenericClass<String> generic;
     }
 
-    @Generic
-    @Scoped(STATELESS)
-    public static class GenericClass<T> {
-
-        @Inject
-        GenericInnerClass<T> value;
+    @Scoped static class GenericClass<T> {
+        @Inject GenericInnerClass<T> value;
     }
 
-    @Generic
-    @Scoped(STATELESS)
-    public static class GenericInnerClass<T> {
+    @Scoped static class GenericInnerClass<T> {
     }
 
     @Test
@@ -55,21 +47,17 @@ public class ContextTest {
         assertEquals(singleton, singleton.instance);
 
         assertNotEquals(GenericClass.class, singleton.generic.getClass());
-        assertTrue(singleton.generic instanceof $Generic);
-        assertEquals(String.class, getTypeParameter(singleton.generic));
+        assertTrue(singleton.generic instanceof $CdiObject);
+        assertArrayEquals(new Object[] { String.class }, getTypeParameters(singleton.generic));
 
         assertNotEquals(GenericInnerClass.class, singleton.generic.value.getClass());
-        assertTrue(singleton.generic.value instanceof $Generic);
-        assertEquals(String.class, getTypeParameter(singleton.generic.value));
+        assertTrue(singleton.generic.value instanceof $CdiObject);
+        assertArrayEquals(new Object[] { String.class }, getTypeParameters(singleton.generic.value));
     }
 
-    @Scoped(STATELESS)
-    public static class WithConstructor {
-
+    @Scoped static class WithConstructor {
         public int value;
-
-        @Constructor
-        public void constructor() {
+        @Constructor public void constructor() {
             value = 15;
         }
     }
@@ -81,11 +69,8 @@ public class ContextTest {
         assertEquals(15, withConstructor.value);
     }
 
-    @Scoped(STATELESS)
-    public static class WithContext {
-
-        @Inject
-        Context context;
+    @Scoped static class WithContext {
+        @Inject Context context;
     }
 
     @Test
@@ -93,5 +78,72 @@ public class ContextTest {
         WithContext withContext = context.lookup(WithContext.class);
 
         assertSame(context, withContext.context);
+    }
+
+    @Scoped static class GenericPair<T, V> {
+        @Inject GenericInnerClass<V> v;
+        @Inject GenericInnerClass<T> t;
+    }
+
+    @Test
+    public void genericPair() {
+        GenericPair pair = context.lookup(GenericPair.class, Integer.class, Double.class);
+
+        assertArrayEquals(new Object[] { Integer.class }, getTypeParameters(pair.t));
+        assertArrayEquals(new Object[] { Double.class  }, getTypeParameters(pair.v));
+    }
+
+    @Scoped static class Erased<T> {
+        @Inject GenericInnerClass value;
+    }
+
+    @Test(expected = RuntimeException.class)
+    public void erased() {
+        context.lookup(Erased.class, String.class);
+    }
+
+    @Scoped static class Wildcard<T> {
+        @Inject GenericInnerClass<?> value;
+    }
+
+    @Test(expected = RuntimeException.class)
+    public void wildcard() {
+        context.lookup(Wildcard.class, String.class);
+    }
+
+    @Scoped static class InjectedClass<T extends CharSequence & Serializable, V extends List<? super T>> {
+        @Inject Class<T> clazz;
+    }
+
+    @Test
+    public void injectedClass() {
+        InjectedClass injectedClass = context.lookup(InjectedClass.class, String.class, List.class);
+        assertEquals(String.class, injectedClass.clazz);
+    }
+
+    @Scoped static class Shitty<T> {
+        @Inject Class<T> clazz;
+        @Inject T value;
+    }
+
+    @Scoped static class Holder {
+        @Inject Shitty<Shitty<String>> shitty;
+    }
+
+    @Test
+    public void shitty() {
+        Holder holder = context.lookup(Holder.class);
+        assertSame(String.class, holder.shitty.value.clazz);
+    }
+
+    @Scoped static class WithLazy<T> {
+        @Inject Lazy<T> lazy;
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void lazy() throws Exception {
+        WithLazy<Singleton> lazy = context.lookup(WithLazy.class, Singleton.class);
+        assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
     }
 }

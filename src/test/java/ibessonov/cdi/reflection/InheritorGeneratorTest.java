@@ -11,7 +11,7 @@ import static org.junit.Assert.*;
 public class InheritorGeneratorTest {
 
     @Scoped
-    public static class ParameterClass {
+    static class ParameterClass {
     }
 
     @Test

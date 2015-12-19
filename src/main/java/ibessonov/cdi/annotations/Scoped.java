@@ -12,7 +12,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 /**
  * @author ibessonov
  */
-@Target({TYPE})
+@Target(TYPE)
 @Retention(RUNTIME)
 public @interface Scoped {
     Scope value() default STATELESS;
