@@ -15,7 +15,7 @@ public class CdiException extends RuntimeException {
     }
 
     public CdiException(CdiErrorType type, Object... args) {
-        super(String.format(type.toString(), args));
+        super(type.toString(args));
         this.type = type;
     }
 

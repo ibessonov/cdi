@@ -1,7 +1,5 @@
 package ibessonov.cdi.util;
 
-import ibessonov.cdi.internal.$CdiObject;
-
 import java.security.PrivilegedAction;
 import java.util.concurrent.Callable;
 
@@ -38,21 +36,12 @@ public final class Cdi {
         }
     }
 
-    public static void throwUnchecked(Throwable throwable) {
-        throwUnchecked0(throwable);
-    }
-
-    //temporary
-    public static Class<?>[] getTypeParameters(Object object) {
-        return (($CdiObject) object).$generics();
+    public static boolean isChecked(Class<?> exceptionClass) {
+        return RuntimeException.class.isAssignableFrom(exceptionClass)
+                       || Error.class.isAssignableFrom(exceptionClass);
     }
 
     private static RuntimeException toRuntimeException(Exception e) {
         return (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T extends Throwable> void throwUnchecked0(Throwable throwable) throws T {
-        throw (T) throwable;
     }
 }

@@ -3,16 +3,19 @@ package ibessonov.cdi;
 import ibessonov.cdi.annotations.Constructor;
 import ibessonov.cdi.annotations.Inject;
 import ibessonov.cdi.annotations.Scoped;
+import ibessonov.cdi.exceptions.CdiException;
 import ibessonov.cdi.internal.$CdiObject;
+import ibessonov.cdi.internal.$Context;
 import ibessonov.cdi.util.Lazy;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.List;
 
 import static ibessonov.cdi.enums.Scope.SINGLETON;
-import static ibessonov.cdi.util.Cdi.getTypeParameters;
+import static ibessonov.cdi.reflection.Descriptor.$$;
 import static org.junit.Assert.*;
 
 /**
@@ -20,15 +23,19 @@ import static org.junit.Assert.*;
  */
 public class ContextTest {
 
-    private ContextImpl context;
+    private $Context context;
+
+    @BeforeClass
+    public static void setUpClass() {
+//        System.setProperty("ibessonov.cdi.javac.log.classes", "true");
+    }
 
     @Before
     public void setUp() {
         context = new ContextImpl();
     }
 
-    @Scoped(SINGLETON)
-    static class Singleton {
+    @Scoped(SINGLETON) static class Singleton {
         @Inject Singleton instance;
         @Inject GenericClass<String> generic;
     }
@@ -38,6 +45,7 @@ public class ContextTest {
     }
 
     @Scoped static class GenericInnerClass<T> {
+        @Inject Class<T> c;
     }
 
     @Test
@@ -48,16 +56,14 @@ public class ContextTest {
 
         assertNotEquals(GenericClass.class, singleton.generic.getClass());
         assertTrue(singleton.generic instanceof $CdiObject);
-        assertArrayEquals(new Object[] { String.class }, getTypeParameters(singleton.generic));
 
         assertNotEquals(GenericInnerClass.class, singleton.generic.value.getClass());
         assertTrue(singleton.generic.value instanceof $CdiObject);
-        assertArrayEquals(new Object[] { String.class }, getTypeParameters(singleton.generic.value));
     }
 
     @Scoped static class WithConstructor {
-        public int value;
-        @Constructor public void constructor() {
+        int value;
+        @Constructor public void constructor(Singleton param) {
             value = 15;
         }
     }
@@ -87,28 +93,28 @@ public class ContextTest {
 
     @Test
     public void genericPair() {
-        GenericPair pair = context.lookup(GenericPair.class, Integer.class, Double.class);
+        GenericPair pair = context.lookup($$(GenericPair.class, $$(Integer.class), $$(Double.class)));
 
-        assertArrayEquals(new Object[] { Integer.class }, getTypeParameters(pair.t));
-        assertArrayEquals(new Object[] { Double.class  }, getTypeParameters(pair.v));
+        assertEquals(Integer.class, pair.t.c);
+        assertEquals(Double.class, pair.v.c);
     }
 
     @Scoped static class Erased<T> {
         @Inject GenericInnerClass value;
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test(expected = CdiException.class)
     public void erased() {
-        context.lookup(Erased.class, String.class);
+        context.lookup($$(Erased.class, $$(String.class)));
     }
 
     @Scoped static class Wildcard<T> {
         @Inject GenericInnerClass<?> value;
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test(expected = CdiException.class)
     public void wildcard() {
-        context.lookup(Wildcard.class, String.class);
+        context.lookup($$(Wildcard.class, $$(String.class)));
     }
 
     @Scoped static class InjectedClass<T extends CharSequence & Serializable, V extends List<? super T>> {
@@ -117,7 +123,8 @@ public class ContextTest {
 
     @Test
     public void injectedClass() {
-        InjectedClass injectedClass = context.lookup(InjectedClass.class, String.class, List.class);
+        @SuppressWarnings("unchecked")
+        InjectedClass<String, List<String>> injectedClass = context.lookup($$(InjectedClass.class, $$(String.class), $$(List.class)));
         assertEquals(String.class, injectedClass.clazz);
     }
 
@@ -141,9 +148,9 @@ public class ContextTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    public void lazy() throws Exception {
-        WithLazy<Singleton> lazy = context.lookup(WithLazy.class, Singleton.class);
+    public void lazy() {
+        @SuppressWarnings("unchecked")
+        WithLazy<Singleton> lazy = context.lookup($$(WithLazy.class, $$(Singleton.class)));
         assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
     }
 }

@@ -8,7 +8,7 @@
     <version>0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>cdi</name>
+    <name>ibessonov.cdi</name>
     <description>--put description here--</description>
 
     <properties>
@@ -17,11 +17,20 @@
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>mvnrepository</id>
+            <name>MVN repository</name>
+            <url>http://mvnrepository.com/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>LATEST</version>
+            <version>4.12</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

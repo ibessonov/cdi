@@ -1,21 +1,27 @@
 package ibessonov.cdi.javac;
 
 import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.logging.Logger;
 
-import static ibessonov.cdi.reflection.ReflectionUtil.getMethod;
-import static ibessonov.cdi.reflection.ReflectionUtil.invoke;
+import static ibessonov.cdi.javac.Reflection.getMethod;
+import static ibessonov.cdi.javac.Reflection.invoke;
+import static java.lang.Boolean.getBoolean;
 import static java.lang.ClassLoader.getSystemClassLoader;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singleton;
+import static java.util.logging.Level.INFO;
+import static java.util.logging.Logger.getLogger;
+import static javax.tools.ToolProvider.getSystemJavaCompiler;
 
 /**
  * Runtime in-memory java compiler that uses {@link javax.tools.JavaCompiler} as a base
  * @author ibessonov
  */
 public class JavaC {
+
+    private static final Logger _log = getLogger(JavaC.class.getName());
 
     @SuppressWarnings("SpellCheckingInspection")
     private static final List<String> PARAMS = asList("-g:none", "-proc:none", "-Xlint:none");
@@ -44,10 +50,13 @@ public class JavaC {
      * @return Class object that represents compiled class
      */
     public static Class<?> compile(ClassLoader classLoader, String name, String content) {
+        if (getBoolean("ibessonov.cdi.javac.log.classes")) {
+            _log.log(INFO, "Compiling " + name + " with " + classLoader + ":\n" + content);
+        }
         SourceCode sourceCode = new SourceCode(name, content);
         CompiledCode compiledCode = new CompiledCode(name);
 
-        JavaCompiler javaC = ToolProvider.getSystemJavaCompiler();
+        JavaCompiler javaC = getSystemJavaCompiler();
         CdiFileManager cdiFileManager = new CdiFileManager(javaC.getStandardFileManager(null, null, null), compiledCode);
         javaC.getTask(null, cdiFileManager, null, PARAMS, null, singleton(sourceCode)).call();
 

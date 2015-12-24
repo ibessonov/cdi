@@ -7,8 +7,4 @@ package ibessonov.cdi.internal;
 public interface $CdiObject {
 
     void $construct();
-
-    $Context $context();
-
-    Class<?>[] $generics();
 }

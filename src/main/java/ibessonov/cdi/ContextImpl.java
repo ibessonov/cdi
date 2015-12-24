@@ -1,14 +1,12 @@
 package ibessonov.cdi;
 
 import ibessonov.cdi.annotations.Scoped;
-import ibessonov.cdi.enums.CdiErrorType;
 import ibessonov.cdi.enums.Scope;
-import ibessonov.cdi.exceptions.CdiException;
 import ibessonov.cdi.exceptions.ImpossibleError;
 import ibessonov.cdi.internal.$CdiObject;
 import ibessonov.cdi.internal.$Context;
+import ibessonov.cdi.reflection.Descriptor;
 import ibessonov.cdi.reflection.InheritorGenerator;
-import ibessonov.cdi.reflection.ReflectionUtil;
 
 import java.lang.reflect.Constructor;
 import java.util.*;
@@ -17,8 +15,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import static ibessonov.cdi.enums.CdiErrorType.GENERIC_PARAMETERS_COUNT_MISMATCH;
-import static ibessonov.cdi.enums.CdiErrorType.PRIMITIVE_TYPE_LOOKUP;
 import static ibessonov.cdi.reflection.ReflectionUtil.newInstance;
 import static ibessonov.cdi.util.Cdi.silent;
 
@@ -28,17 +24,11 @@ import static ibessonov.cdi.util.Cdi.silent;
 final class ContextImpl implements $Context {
 
     @Override
-    public <T> T lookup(Class<T> clazz, Class<?> ... params) {
-        if (clazz.getTypeParameters().length != params.length) {
-            throw new CdiException(GENERIC_PARAMETERS_COUNT_MISMATCH,
-                    clazz.getCanonicalName(), clazz.getTypeParameters().length, params.length);
-        }
-        return lookup0(clazz, new Descriptor(clazz, params));
+    public <T> T lookup(Descriptor<T> d) {
+        return lookup0(d.c, d);
     }
 
     private <T> T lookup0(Class<T> clazz, Descriptor descriptor) {
-        if (clazz.isPrimitive()) throw new CdiException(PRIMITIVE_TYPE_LOOKUP, clazz.getCanonicalName());
-
         Scope scope = scope(clazz);
         if (scope == null) {
             return newInstance(clazz);
@@ -82,7 +72,7 @@ final class ContextImpl implements $Context {
         return clazz.cast(object);
     }
 
-    private final ThreadLocal<Map<Object, Object>> dejaVu = ThreadLocal.withInitial(WeakHashMap::new);
+    private final ThreadLocal<Map<Object, Object>> dejaVu = ThreadLocal.withInitial(HashMap::new);
     private <T> T lookupStateless(Class<T> clazz, Descriptor descriptor) {
         Map<Object, Object> dejaVu = this.dejaVu.get();
         Object object = dejaVu.get(descriptor);
@@ -124,13 +114,13 @@ final class ContextImpl implements $Context {
         }
     }
 
+    private static final ConcurrentMap<Class<?>, Constructor<?>> constructors = new ConcurrentHashMap<>();
     private Object instantiate(Descriptor descriptor) {
-        Constructor<?> ctr = silent(() -> {
-            Class<?> proxy = proxy(descriptor.clazz);
-            //problem
-            return proxy.getConstructor($Context.class, Class[].class);
-        });
-        return ReflectionUtil.newInstance(ctr, this, descriptor.params);
+        Class<?> proxy = proxy(descriptor.c);
+        Constructor<?> ctr = constructors.computeIfAbsent(proxy, p -> silent(() -> proxy.getConstructors()[0]));
+        return ctr.getParameterCount() == 1
+                ? newInstance(ctr, this)
+                : newInstance(ctr, this, descriptor.p);
     }
 
     private static final Map<Class, Class<?>> defaults = new IdentityHashMap<>();
@@ -147,34 +137,6 @@ final class ContextImpl implements $Context {
     private Scope scope(Class<?> clazz) {
         Scoped scoped = clazz.getAnnotation(Scoped.class);
         return (scoped == null) ? null : scoped.value();
-    }
-
-    private static final class Descriptor {
-        public final Class<?> clazz;
-        public final Class<?> params[];
-        private int  hash = 0;
-
-        public Descriptor(Class<?> clazz, Class<?> ... params) {
-            this.clazz = clazz;
-            this.params = params;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (!(obj instanceof Descriptor)) return false;
-
-            Descriptor that = (Descriptor) obj;
-            return this.clazz == that.clazz && Arrays.equals(this.params, that.params);
-        }
-
-        @Override
-        public int hashCode() {
-            int h = hash;
-            if (h == 0) {
-                hash = h = clazz.hashCode() ^ Arrays.hashCode(params);
-            }
-            return h;
-        }
     }
 
     private static <T> void bind(Class<T> sup, Class<? extends T> sub) {

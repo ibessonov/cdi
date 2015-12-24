@@ -23,5 +23,5 @@ public abstract class Lazy<T> implements Supplier<T> {
     }
 
     @Provided
-    protected abstract T init();
+    abstract T init();
 }

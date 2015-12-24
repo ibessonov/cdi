@@ -19,6 +19,7 @@ public class InheritorGeneratorTest {
         Class<ParameterClass> clazz = ParameterClass.class;
 
         Class<? extends ParameterClass> subclass = InheritorGenerator.getSubclass(clazz);
+        assertNotSame(clazz, subclass);
         assertTrue(clazz.isAssignableFrom(subclass));
     }
 }
