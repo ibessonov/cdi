@@ -2,7 +2,10 @@ package org.ibess.cdi.reflection;
 
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.ImpossibleError;
+import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
+import org.ibess.cdi.internal.$Descriptor;
+import org.ibess.cdi.internal.$Instantiator;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -15,7 +18,8 @@ import java.util.*;
 // this one has to be refactored
 class ClassBuilder {
 
-    public static final String SUFFIX = "$$Cdi";
+    public static final String SUFFIX = "$Cdi";
+    private static final String DESCRIPTOR_CLASS_NAME = $Descriptor.class.getCanonicalName();
 
     private final String thePackage;
     private final String className;
@@ -59,10 +63,10 @@ class ClassBuilder {
 
     private void requiresDescriptorsField() {
         if (!fields.containsKey("$d")) {
-            FieldInfo $d = new FieldInfo("$d", Descriptor[].class);
+            FieldInfo $d = new FieldInfo("$d", $Descriptor[].class);
             fields.put("$d", $d);
 
-            ParameterInfo param = constructor.addParameter("$d", Descriptor[].class);
+            ParameterInfo param = constructor.addParameter("$d", $Descriptor[].class);
             constructor.addStatement(new AssignmentStatement("$d", new ParameterValueExpression(param)));
         }
     }
@@ -94,18 +98,17 @@ class ClassBuilder {
     }
 
     public String build() {
-        StringBuilder sb = new StringBuilder(4096);
+        StringBuilder sb = new StringBuilder(8 * 1024);
 
         // package + imports
         sb.append("package ").append(thePackage).append(";\n");
-        sb.append("import static org.ibess.cdi.reflection.Descriptor.$$;\n");
 
         // class declaration
         sb.append("@SuppressWarnings(\"unchecked\") public final class ").append(className);
         appendGenericParameters(sb, true);
         sb.append(" extends ").append(superClass.getCanonicalName());
         appendGenericParameters(sb, false);
-        sb.append(" implements org.ibess.cdi.internal.$CdiObject {\n");
+        sb.append(" implements ").append($CdiObject.class.getCanonicalName()).append(" {\n");
 
         // fields
         for (FieldInfo field : fields.values()) {
@@ -119,6 +122,27 @@ class ClassBuilder {
 
         // finish
         sb.append("}\n");
+        return sb.toString();
+    }
+
+    public String buildInstantiator() {
+        StringBuilder sb = new StringBuilder(8 * 1024);
+
+        String className = this.className + "0";
+        sb.append("package ").append(thePackage).append(";\n");
+
+        sb.append("@SuppressWarnings(\"unchecked\") public final class ").append(className);
+        sb.append(" implements ").append($Instantiator.class.getCanonicalName()).append(" {\n");
+
+        sb.append("  public static final ").append(className).append(" INSTANCE = new ").append(className).append("();\n");
+        sb.append("  @Override public Object $create(").append($Context.class.getCanonicalName()).append(" $c, ");
+        sb.append(DESCRIPTOR_CLASS_NAME).append("[] $d) {\n");
+        if (fields.containsKey("$d")) {
+            sb.append("    return new ").append(this.className).append("($c, $d);\n");
+        } else {
+            sb.append("    return new ").append(this.className).append("($c);\n");
+        }
+        sb.append("  }\n}\n");
         return sb.toString();
     }
 
@@ -354,36 +378,52 @@ class ClassBuilder {
             } else if (type instanceof TypeVariable) {
                 sb.append("(").append(type.getTypeName()).append(") ");
             }
-            sb.append("$c.lookup(");
+            sb.append("$c.$lookup(");
             appendDescriptor(sb, type);
             sb.append(")");
         }
 
         private void appendDescriptor(StringBuilder sb, Type currentType) {
             if (currentType instanceof TypeVariable) {
-                TypeVariable typeVariable = (TypeVariable) currentType;
-                String typeVariableName = typeVariable.getName();
-
-                sb.append("$d[").append(paramsIndex.get(typeVariableName)).append("]");
+                sb.append("$d[").append(paramsIndex.get(currentType.getTypeName())).append("]");
             } else {
-                sb.append("$$(");
+                sb.append(DESCRIPTOR_CLASS_NAME).append(".$");
                 if (currentType instanceof ParameterizedType) {
                     ParameterizedType parameterizedType = (ParameterizedType) currentType;
                     Class clazz = (Class) parameterizedType.getRawType();
+
+                    String canonicalName = clazz.getCanonicalName();
                     if (clazz.isAnnotationPresent(Scoped.class)) {
-                        String canonicalName = clazz.getCanonicalName();
-
-                        sb.append(canonicalName).append(".class");
-
                         Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
-                        for (Type actualTypeArgument : actualTypeArguments) {
-                            sb.append(", ");
-                            appendDescriptor(sb, actualTypeArgument);
+                        if (actualTypeArguments.length == 0) {
+                            sb.append("0(").append(canonicalName).append(".class");
+                        } else {
+                            sb.append("(").append(canonicalName).append(".class");
+                            boolean optimize = true;
+                            for (int i = 0, length = actualTypeArguments.length; i < length; i++) {
+                                Type actualTypeArgument = actualTypeArguments[i];
+                                boolean matches = (actualTypeArgument instanceof TypeVariable)
+                                        && (i == paramsIndex.get(actualTypeArgument.getTypeName()));
+                                if (!matches) {
+                                    optimize = false;
+                                    break;
+                                }
+                            }
+
+                            if (optimize) {
+                                sb.append(", $d");
+                            } else {
+                                for (Type actualTypeArgument : actualTypeArguments) {
+                                    sb.append(", ");
+                                    appendDescriptor(sb, actualTypeArgument);
+                                }
+                            }
                         }
                     } else {
-                        sb.append(clazz.getCanonicalName()).append(".class");
+                        sb.append("0(").append(canonicalName).append(".class");
                     }
                 } else if (currentType instanceof Class) {
+                    sb.append("0(");
                     Class clazz = (Class) currentType;
                     sb.append(clazz.getCanonicalName()).append(".class");
                 } else {

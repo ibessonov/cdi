@@ -8,12 +8,12 @@ import static javax.tools.JavaFileObject.Kind.SOURCE;
 /**
  * @author ibessonov
  */
-class SourceCode extends SimpleJavaFileObject {
+class InputJavaFileObject extends SimpleJavaFileObject {
 
     private final String content;
 
-    public SourceCode(String className, String content) {
-        super(URI.create("string:///" + className.replace('.', '/') + SOURCE.extension), SOURCE);
+    public InputJavaFileObject(String className, String content) {
+        super(URI.create("string:///" + className.replace('.', '/') + ".java"), SOURCE);
         this.content = content;
     }
 

@@ -10,73 +10,117 @@ import org.ibess.cdi.javac.JavaC;
 import org.ibess.cdi.reflection.ClassBuilder.Expression;
 
 import java.lang.reflect.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Stream;
+import java.util.*;
 
+import static java.lang.reflect.Modifier.*;
 import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.util.Cdi.isChecked;
-import static java.lang.reflect.Modifier.isAbstract;
-import static java.lang.reflect.Modifier.isFinal;
 
 /**
  * @author ibessonov
  */
 public final class InheritorGenerator {
 
-    //TODO global lock required for planned improvements
-    private static final ConcurrentMap<Class, Class<?>> cache = new ConcurrentHashMap<>();
+    private static final Map<Class, ClassInfo<?>> cache = new HashMap<>();
 
+    @SuppressWarnings("unchecked")
     public static <T> Class<? extends T> getSubclass(Class<T> clazz) {
-        return cache.computeIfAbsent(clazz, c -> {
-            if (isFinal(clazz.getModifiers())) {
-                throw new CdiException(FINAL_SCOPED_CLASS, clazz.getCanonicalName());
+        ClassInfo<T> ci = (ClassInfo<T>) cache.get(clazz);
+        if (ci == null || !ci.compiled) {
+            synchronized (InheritorGenerator.class) {
+                ci = (ClassInfo<T>) cache.get(clazz);
+                if (ci == null) {
+                    cache.put(clazz, ci = getClassInfo(clazz));
+                }
+                if (!ci.compiled) {
+                    Map<String, String> contents = new HashMap<>();
+                    buildSources(ci, contents);
+                    JavaC.compile(contents);
+                }
             }
-            Scoped scoped = clazz.getAnnotation(Scoped.class);
-            if (scoped == null) { // remove this checking in future. This class has to be invisible for users
-                throw new ImpossibleError();
-            }
-            if (scoped.value() != STATELESS && clazz.getTypeParameters().length > 0) {
-                throw new CdiException(PARAMETERIZED_NON_STATELESS, clazz.getCanonicalName());
-            }
+        }
+        Class<? extends T> result = ci.compiledClass;
+        if (result == null) {
+            ci.compiledClass = result = (Class<? extends T>) forName(ci.resultName);
+        }
+        return result;
+    }
 
-            ClassInfo<T> ci = new ClassInfo<>(clazz);
+    private static <T> ClassInfo<T> getClassInfo(Class<T> clazz) {
+        if (isFinal(clazz.getModifiers())) {
+            throw new CdiException(FINAL_SCOPED_CLASS, clazz.getCanonicalName());
+        }
+        if (clazz.getEnclosingClass() != null && !isStatic(clazz.getModifiers())) {
+            // throw
+        }
+        Scoped scoped = clazz.getAnnotation(Scoped.class);
+        if (scoped == null) { // remove this checking in future. This class has to be invisible for users
+            throw new ImpossibleError();
+        }
+        if (scoped.value() != STATELESS && clazz.getTypeParameters().length > 0) {
+            throw new CdiException(PARAMETERIZED_NON_STATELESS, clazz.getCanonicalName());
+        }
 
-            Field[] fields = Stream.of(clazz.getDeclaredFields()).filter(InheritorGenerator::injectable).toArray(Field[]::new);
-            for (Field field : fields) {
+        ClassInfo<T> ci = new ClassInfo<>(clazz);
+
+        for (Field field : ci.declaredFields) {
+            if (injectable(field)) {
+                validateFieldForInjection(ci, field);
                 appendFieldConstruction(ci, field);
             }
-            appendConstructorInvocation(ci);
+        }
+        appendConstructorInvocation(ci);
 
-            Method[] methods = Stream.of(clazz.getDeclaredMethods()).filter(m -> isAbstract(m.getModifiers())).toArray(Method[]::new);
-            for (Method method : methods) {
-                implementMethod(ci, method);
+        for (Method method : ci.declaredMethods) {
+            if (isAbstract(method.getModifiers())) implementMethod(ci, method);
+        }
+
+        return ci;
+    }
+
+    private static Class<?> forName(String name) {
+        try {
+            return Class.forName(name);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void buildSources(ClassInfo<?> ci, Map<String, String> contents) {
+        if (ci.compiled) return;
+        if (contents.containsKey(ci.resultName)) return;
+        contents.put(ci.resultName, ci.toString());
+        contents.put(ci.resultName + "0", ci.builder.buildInstantiator());
+
+        for (Class<?> clazz : ci.dependsOn) {
+            ClassInfo<?> info = cache.get(clazz);
+            if (info == null) {
+                cache.put(clazz, info = getClassInfo(clazz));
             }
-
-            return JavaC.compile(clazz.getName() + ClassBuilder.SUFFIX, ci.toString());
-        }).asSubclass(clazz);
+            buildSources(info, contents);
+        }
+        ci.dependsOn = null;
+        ci.compiled = true;
     }
 
     private static void appendFieldConstruction(ClassInfo ci, Field field) {
-        validateLookup(ci, field.getGenericType());
-
         ci.builder.getConstructMethod().addStatement(ci.builder.newAssignmentStatement(
                 field.getName(), ci.builder.newLookupExpression(field.getGenericType())
         ));
     }
 
     private static void appendConstructorInvocation(ClassInfo<?> ci) {
-        Method[] methods = Stream.of(ci.clazz.getDeclaredMethods()).filter(
-                m -> m.isAnnotationPresent(Constructor.class)
-        ).toArray(Method[]::new);
-        if (methods.length < 1) return;
-        if (methods.length > 1) throw new CdiException(TOO_MANY_CONSTRUCTORS, ci.originalName);
-        Method constructor = methods[0];
+        Method constructor = null;
+        for (Method method : ci.declaredMethods) {
+            if (method.isAnnotationPresent(Constructor.class)) {
+                if (constructor != null) {
+                    throw new CdiException(TOO_MANY_CONSTRUCTORS, ci.originalName);
+                }
+                constructor = method;
+            }
+        }
+        if (constructor == null) return;
 
         validateConstructor(ci, constructor);
         int parameterCount = constructor.getParameterCount();
@@ -88,9 +132,8 @@ public final class InheritorGenerator {
             validateLookup(ci, parameterTypes[i]);
             params.add(ci.builder.newLookupExpression(parameterTypes[i]));
         }
-        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement(constructor.getName(), params));
+        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement("super." + constructor.getName(), params));
     }
-
 
     private static <T> void implementMethod(ClassInfo<T> ci, Method method) {
         if (!implementable(method)) {
@@ -126,6 +169,16 @@ public final class InheritorGenerator {
         return field.isAnnotationPresent(Inject.class);
     }
 
+    private static void validateFieldForInjection(ClassInfo<?> ci, Field field) {
+        if (isPrivate(field.getModifiers())) {
+            throw new CdiException(PRIVATE_FIELD_INJECTION, ci.originalName, field.getName());
+        }
+        if (isFinal(field.getModifiers())) {
+            throw new CdiException(FINAL_FIELD_INJECTION, ci.originalName, field.getName());
+        }
+        validateLookup(ci, field.getGenericType());
+    }
+
     private static boolean implementable(Method method) {
         return method.getTypeParameters().length == 0 && method.getParameterCount() == 0
                 && !method.getReturnType().isPrimitive() && method.isAnnotationPresent(Provided.class); // " lookupable" return type
@@ -135,8 +188,11 @@ public final class InheritorGenerator {
         Class<?>[] exceptions = constructor.getExceptionTypes();
         for (Class<?> exceptionClass : exceptions) {
             if (!isChecked(exceptionClass)) {
-                throw new CdiException(CONSTRUCTOR_THROWS_EXCEPTION, ci.originalName);
+                throw new CdiException(CONSTRUCTOR_THROWS_EXCEPTION, ci.originalName, exceptionClass.getCanonicalName());
             }
+        }
+        if (isPrivate(constructor.getModifiers())) {
+            throw new CdiException(CONSTRUCTOR_IS_PRIVATE, ci.originalName);
         }
         if (isAbstract(constructor.getModifiers())) {
             throw new CdiException(CONSTRUCTOR_IS_ABSTRACT, ci.originalName);
@@ -154,6 +210,7 @@ public final class InheritorGenerator {
                 if (params.length > 0) {
                     throw new CdiException(GENERIC_PARAMETERS_COUNT_MISMATCH, clazz.getCanonicalName(), 0, params.length);
                 }
+                ci.dependsOn.add(clazz);
             }
         } else if (type instanceof ParameterizedType) {
             ParameterizedType pType = (ParameterizedType) type;
@@ -162,6 +219,7 @@ public final class InheritorGenerator {
                 for (Type param : pType.getActualTypeArguments()) {
                     validateType(ci, param);
                 }
+                ci.dependsOn.add(clazz);
             }
         } else if (type instanceof TypeVariable) {
             // remember it for future checks
@@ -181,8 +239,15 @@ public final class InheritorGenerator {
         public final String               originalName;
         public final TypeVariable[]       params;
         public final Map<String, Integer> paramsIndex;
+        public final Field[]              declaredFields;
+        public final Method[]             declaredMethods;
+        public final String               resultName;
 
         public final ClassBuilder builder;
+
+        public boolean compiled = false;
+        public Class<? extends T> compiledClass;
+        public Set<Class<?>> dependsOn = new HashSet<>();
 
         public ClassInfo(Class<T> clazz) {
             this.clazz          = clazz;
@@ -193,6 +258,11 @@ public final class InheritorGenerator {
             for (int i = 0, length = params.length; i < length; i++) {
                 paramsIndex.put(params[i].getName(), i);
             }
+
+            this.declaredFields  = clazz.getDeclaredFields();
+            this.declaredMethods = clazz.getDeclaredMethods();
+
+            this.resultName = clazz.getName() + ClassBuilder.SUFFIX;
 
             builder = new ClassBuilder(clazz);
         }

@@ -10,11 +10,11 @@ import static javax.tools.JavaFileObject.Kind.CLASS;
 /**
  * @author ibessonov
  */
-class CompiledCode extends SimpleJavaFileObject {
+class OutputJavaFileObject extends SimpleJavaFileObject {
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    public CompiledCode(String className) {
+    public OutputJavaFileObject(String className) {
         super(URI.create(className), CLASS);
     }
 

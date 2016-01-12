@@ -7,7 +7,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
 import static org.ibess.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
-import static org.ibess.cdi.util.Cdi.silent;
 
 /**
  * @author ibessonov
@@ -15,7 +14,13 @@ import static org.ibess.cdi.util.Cdi.silent;
 public class ReflectionUtil {
 
     public static <T> T newInstance(Class<? extends T> clazz) {
-        return silent(clazz::newInstance);
+        try {
+            return clazz.newInstance();
+        } catch (InstantiationException ie) {
+            throw new ImpossibleError(ie);
+        } catch (IllegalAccessException iae) {
+            throw new CdiException(iae, ILLEGAL_ACCESS);
+        }
     }
 
     public static <T> T newInstance(Constructor<T> ctr, Object... args) {

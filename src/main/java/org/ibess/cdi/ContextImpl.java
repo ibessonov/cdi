@@ -5,10 +5,10 @@ import org.ibess.cdi.enums.Scope;
 import org.ibess.cdi.exceptions.ImpossibleError;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
-import org.ibess.cdi.reflection.Descriptor;
+import org.ibess.cdi.internal.$Descriptor;
+import org.ibess.cdi.internal.$Instantiator;
 import org.ibess.cdi.reflection.InheritorGenerator;
 
-import java.lang.reflect.Constructor;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -24,13 +24,14 @@ import static org.ibess.cdi.util.Cdi.silent;
 final class ContextImpl implements $Context {
 
     @Override
-    public <T> T lookup(Descriptor<T> d) {
+    public Object $lookup($Descriptor d) {
         return lookup0(d.c, d);
     }
 
-    private <T> T lookup0(Class<T> clazz, Descriptor descriptor) {
+    private Object lookup0(Class clazz, $Descriptor descriptor) {
         Scope scope = scope(clazz);
         if (scope == null) {
+            if (clazz == Context.class) return this; // temporary workaround
             return newInstance(clazz);
         }
         switch (scope) {
@@ -45,9 +46,9 @@ final class ContextImpl implements $Context {
         }
     }
 
-    private final Map<Class, Object> singletons = new IdentityHashMap<>();
-    private final ReadWriteLock rwLock     = new ReentrantReadWriteLock();
-    private <T> T lookupSingleton(Class<T> clazz, Descriptor descriptor) {
+    private final Map<Class, Object> singletons = new HashMap<>();
+    private final ReadWriteLock      rwLock     = new ReentrantReadWriteLock();
+    private Object lookupSingleton(Class clazz, $Descriptor descriptor) {
         rwLock.readLock().lock();
         Object object = singletons.get(clazz);
         rwLock.readLock().unlock();
@@ -69,11 +70,11 @@ final class ContextImpl implements $Context {
                 rwLock.writeLock().unlock();
             }
         }
-        return clazz.cast(object);
+        return object;
     }
 
     private final ThreadLocal<Map<Object, Object>> dejaVu = ThreadLocal.withInitial(HashMap::new);
-    private <T> T lookupStateless(Class<T> clazz, Descriptor descriptor) {
+    private Object lookupStateless(Class clazz, $Descriptor descriptor) {
         Map<Object, Object> dejaVu = this.dejaVu.get();
         Object object = dejaVu.get(descriptor);
         if (object == null) {
@@ -85,7 +86,7 @@ final class ContextImpl implements $Context {
                 dejaVu.remove(descriptor);
             }
         }
-        return clazz.cast(object);
+        return object;
     }
 
     @Override
@@ -97,7 +98,7 @@ final class ContextImpl implements $Context {
     }
 
     private final ThreadLocal<Map<Object, Object>> requestScoped = ThreadLocal.withInitial(HashMap::new);
-    private <T> T lookupRequestScoped(Class<T> clazz, Descriptor descriptor) {
+    private Object lookupRequestScoped(Class clazz, $Descriptor descriptor) {
         Map<Object, Object> requestScoped = this.requestScoped.get();
         Object object = requestScoped.get(descriptor);
         if (object == null) {
@@ -105,7 +106,7 @@ final class ContextImpl implements $Context {
             requestScoped.put(descriptor, object);
             construct(object);
         }
-        return clazz.cast(object);
+        return object;
     }
 
     private void construct(Object object) {
@@ -114,21 +115,22 @@ final class ContextImpl implements $Context {
         }
     }
 
-    private static final ConcurrentMap<Class<?>, Constructor<?>> constructors = new ConcurrentHashMap<>();
-    private Object instantiate(Descriptor descriptor) {
+    private static final ConcurrentMap<Class, $Instantiator> instantiators = new ConcurrentHashMap<>();
+    private Object instantiate($Descriptor descriptor) {
         Class<?> proxy = proxy(descriptor.c);
-        Constructor<?> ctr = constructors.computeIfAbsent(proxy, p -> silent(() -> proxy.getConstructors()[0]));
-        return ctr.getParameterCount() == 1
-                ? newInstance(ctr, this)
-                : newInstance(ctr, this, descriptor.p);
+        $Instantiator instantiator = instantiators.computeIfAbsent(proxy, c -> ($Instantiator) silent(() -> {
+            Class i = Class.forName(c.getName() + 0);
+            return i.getField("INSTANCE").get(null);
+        }));
+        return instantiator.$create(this, descriptor.p);
     }
 
-    private static final Map<Class, Class<?>> defaults = new IdentityHashMap<>();
-    private <T> Class<? extends T> proxy(Class<T> clazz) {
+    private static final Map<Class, Class> defaults = new HashMap<>();
+    private Class proxy(Class clazz) {
         if (clazz.isAnnotationPresent(Scoped.class)) {
             return InheritorGenerator.getSubclass(clazz);
         } else if (clazz.isInterface()) {
-            return defaults.getOrDefault(clazz, clazz).asSubclass(clazz);
+            return defaults.getOrDefault(clazz, clazz);
         } else {
             return clazz;
         }
@@ -139,7 +141,7 @@ final class ContextImpl implements $Context {
         return (scoped == null) ? null : scoped.value();
     }
 
-    private static <T> void bind(Class<T> sup, Class<? extends T> sub) {
+    private static void bind(Class sup, Class sub) {
         defaults.put(sup, sub);
     }
 
@@ -149,9 +151,5 @@ final class ContextImpl implements $Context {
         bind(Map.class, HashMap.class);
         bind(SortedMap.class, TreeMap.class);
         bind(ConcurrentMap.class, ConcurrentHashMap.class);
-    }
-
-    {
-        singletons.put(Context.class, this);
     }
 }

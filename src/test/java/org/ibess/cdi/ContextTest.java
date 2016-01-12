@@ -6,28 +6,35 @@ import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
+import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.util.Lazy;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.FixMethodOrder;
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.List;
 
+import static javax.tools.ToolProvider.getSystemJavaCompiler;
 import static org.ibess.cdi.enums.Scope.SINGLETON;
-import static org.ibess.cdi.reflection.Descriptor.$$;
+import static org.ibess.cdi.internal.$Descriptor.$;
+import static org.ibess.cdi.internal.$Descriptor.$0;
 import static org.junit.Assert.*;
+import static org.junit.runners.MethodSorters.NAME_ASCENDING;
 
 /**
  * @author ibessonov
  */
+@SuppressWarnings("unchecked")
+@FixMethodOrder(NAME_ASCENDING)
 public class ContextTest {
 
     private $Context context;
 
     @BeforeClass
     public static void setUpClass() {
-//        System.setProperty("org.ibess.cdi.javac.log.classes", "true");
+        getSystemJavaCompiler();
     }
 
     @Before
@@ -93,7 +100,7 @@ public class ContextTest {
 
     @Test
     public void genericPair() {
-        GenericPair pair = context.lookup($$(GenericPair.class, $$(Integer.class), $$(Double.class)));
+        GenericPair pair = (GenericPair) context.$lookup($(GenericPair.class, $0(Integer.class), $0(Double.class)));
 
         assertEquals(Integer.class, pair.t.c);
         assertEquals(Double.class, pair.v.c);
@@ -105,7 +112,7 @@ public class ContextTest {
 
     @Test(expected = CdiException.class)
     public void erased() {
-        context.lookup($$(Erased.class, $$(String.class)));
+        context.$lookup($(Erased.class, $0(String.class)));
     }
 
     @Scoped static class Wildcard<T> {
@@ -114,7 +121,7 @@ public class ContextTest {
 
     @Test(expected = CdiException.class)
     public void wildcard() {
-        context.lookup($$(Wildcard.class, $$(String.class)));
+        context.$lookup($(Wildcard.class, $0(String.class)));
     }
 
     @Scoped static class InjectedClass<T extends CharSequence & Serializable, V extends List<? super T>> {
@@ -123,8 +130,7 @@ public class ContextTest {
 
     @Test
     public void injectedClass() {
-        @SuppressWarnings("unchecked")
-        InjectedClass<String, List<String>> injectedClass = context.lookup($$(InjectedClass.class, $$(String.class), $$(List.class)));
+        InjectedClass injectedClass = (InjectedClass) context.$lookup($(InjectedClass.class, $0(String.class), $0(List.class)));
         assertEquals(String.class, injectedClass.clazz);
     }
 
@@ -149,8 +155,15 @@ public class ContextTest {
 
     @Test
     public void lazy() {
-        @SuppressWarnings("unchecked")
-        WithLazy<Singleton> lazy = context.lookup($$(WithLazy.class, $$(Singleton.class)));
+        WithLazy<Singleton> lazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
         assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
+    }
+
+    @Test(timeout = 100)
+    public void zLookupPerformance() {
+        $Descriptor $d = $(GenericPair.class, $0(String.class), $0(List.class));
+        for (int i = 0; i < 10000; i++) {
+            context.$lookup($d);
+        }
     }
 }

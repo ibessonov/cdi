@@ -1,10 +1,15 @@
 package org.ibess.cdi.internal;
 
 /**
- * Interface for internal purposes. Must not be used outside of this library's code.
+ * Public interface for automatically generated @Scoped subclasses.<br>
+ * For internal purposes only. Must not be used outside of this library's code.
  * @author ibessonov
  */
 public interface $CdiObject {
 
-    void $construct();
+    /**
+     * Injects all @Inject fields of this object and runs @Constructor method with injected parameters if its present.
+     * Should be called only once for every created $CdiObject instance.
+     */
+    default void $construct() {}
 }
