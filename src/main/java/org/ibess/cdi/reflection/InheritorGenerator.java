@@ -32,15 +32,15 @@ public final class InheritorGenerator {
                 if (!ci.compiled) {
                     Map<String, String> contents = new HashMap<>();
                     buildSources(ci, contents);
-                    ci.compiledClass = JavaC.compile(contents, ci.resultName);
+                    ci.compiledClass = ci.builder.define();
                 }
             }
         }
         Class result = ci.compiledClass;
-        return (result != null) ? result : (ci.compiledClass = forName(ci.resultName));
+        return (result != null) ? result : (ci.compiledClass = ci.builder.define());
     }
 
-    private static ClassInfo getClassInfo(Class<?> clazz) {
+    public static ClassInfo getClassInfo(Class<?> clazz) {
         if (isFinal(clazz.getModifiers())) {
             throw new CdiException(FINAL_SCOPED_CLASS, clazz.getCanonicalName());
         }
@@ -89,13 +89,14 @@ public final class InheritorGenerator {
             ClassInfo info = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
             buildSources(info, contents);
         }
+
         ci.dependsOn = null;
         ci.compiled = true;
     }
 
     private static void appendFieldConstruction(ClassInfo ci, Field field) {
         ci.builder.getConstructMethod().addStatement(ci.builder.newAssignmentStatement(
-                field.getName(), ci.builder.newLookupExpression(field.getGenericType())
+                field, ci.builder.newLookupExpression(field.getGenericType())
         ));
     }
 
@@ -121,7 +122,7 @@ public final class InheritorGenerator {
             validateLookup(ci, parameterTypes[i]);
             params.add(ci.builder.newLookupExpression(parameterTypes[i]));
         }
-        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement("super." + constructor.getName(), params));
+        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement(constructor.getName(), params, parameterTypes, constructor.getReturnType()));
     }
 
     private static void implementMethod(ClassInfo ci, Method method) {
@@ -222,7 +223,7 @@ public final class InheritorGenerator {
         }
     }
 
-    private static class ClassInfo {
+    public static class ClassInfo {
 
         public final Class                clazz;
         public final String               originalName;
@@ -254,11 +255,6 @@ public final class InheritorGenerator {
             this.resultName = clazz.getName() + ClassBuilder.SUFFIX;
 
             builder = new ClassBuilder(clazz);
-        }
-
-        @Override
-        public String toString() {
-            return builder.build();
         }
     }
 
