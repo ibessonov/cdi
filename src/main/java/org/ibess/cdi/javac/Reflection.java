@@ -16,12 +16,14 @@ class Reflection {
     static Method getMethod(Class<?> clazz, String name, Class<?>... parameters) {
         try {
             Method method = clazz.getDeclaredMethod(name, parameters);
-            if (System.getSecurityManager() == null) {
-                method.setAccessible(true);
-            } else {
-                doPrivileged((PrivilegedAction<Void>) () -> {
-                    method.setAccessible(true); return null;
-                });
+            if (!method.isAccessible()) {
+                if (System.getSecurityManager() == null) {
+                    method.setAccessible(true);
+                } else {
+                    doPrivileged((PrivilegedAction<Void>) () -> {
+                        method.setAccessible(true); return null;
+                    });
+                }
             }
             return method;
         } catch (Throwable t) {

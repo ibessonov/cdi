@@ -23,7 +23,7 @@ public final class $Descriptor {
     private $Descriptor(Class c) {
         this.c = c;
         this.p = EMPTY;
-        this.h = c.getName().hashCode();
+        this.h = c.getName().hashCode() ^ 1;
     }
 
     public static $Descriptor $(Class c, $Descriptor... p) {

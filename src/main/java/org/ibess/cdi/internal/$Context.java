@@ -5,7 +5,7 @@ import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 
 import static org.ibess.cdi.enums.CdiErrorType.GENERIC_PARAMETERS_COUNT_MISMATCH;
-import static org.ibess.cdi.internal.$Descriptor.$;
+import static org.ibess.cdi.internal.$Descriptor.$0;
 
 /**
  * Extended {@link Context} functionality for looking up generic classes.
@@ -26,6 +26,6 @@ public interface $Context extends Context {
                     clazz.getCanonicalName(), clazz.getTypeParameters().length, 0);
         }
 
-        return clazz.cast($lookup($(clazz)));
+        return clazz.cast($lookup($0(clazz)));
     }
 }

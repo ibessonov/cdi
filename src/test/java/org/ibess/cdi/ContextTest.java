@@ -6,17 +6,14 @@ import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
-import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.util.Lazy;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.List;
 
-import static javax.tools.ToolProvider.getSystemJavaCompiler;
 import static org.ibess.cdi.enums.Scope.SINGLETON;
 import static org.ibess.cdi.internal.$Descriptor.$;
 import static org.ibess.cdi.internal.$Descriptor.$0;
@@ -31,11 +28,6 @@ import static org.junit.runners.MethodSorters.NAME_ASCENDING;
 public class ContextTest {
 
     private $Context context;
-
-    @BeforeClass
-    public static void setUpClass() {
-        getSystemJavaCompiler();
-    }
 
     @Before
     public void setUp() {
@@ -161,9 +153,8 @@ public class ContextTest {
 
     @Test(timeout = 100)
     public void zLookupPerformance() {
-        $Descriptor $d = $(GenericPair.class, $0(String.class), $0(List.class));
         for (int i = 0; i < 10000; i++) {
-            context.$lookup($d);
+            context.$lookup($(GenericPair.class, $0(String.class), $0(List.class)));
         }
     }
 }

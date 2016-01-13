@@ -1,5 +1,6 @@
 package org.ibess.cdi.reflection;
 
+import org.ibess.cdi.Context;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.ImpossibleError;
 import org.ibess.cdi.internal.$CdiObject;
@@ -120,29 +121,17 @@ class ClassBuilder {
             method.appendItself(sb);
         }
 
+        // instantiator
+        sb.append("  public static final $I $i = new $I();\n");
+        sb.append("  private static final class $I implements ").append($Instantiator.class.getCanonicalName()).append(" {\n");
+        sb.append("    @Override public Object $create(").append($Context.class.getCanonicalName()).append(" $c, ");
+        sb.append(DESCRIPTOR_CLASS_NAME).append("[] $d) {\n");
+        sb.append("      return new ").append(this.className).append(fields.containsKey("$d") ? "($c, $d);\n" : "($c);\n");
+        sb.append("    }\n");
+        sb.append("  }\n");
+
         // finish
         sb.append("}\n");
-        return sb.toString();
-    }
-
-    public String buildInstantiator() {
-        StringBuilder sb = new StringBuilder(8 * 1024);
-
-        String className = this.className + "0";
-        sb.append("package ").append(thePackage).append(";\n");
-
-        sb.append("@SuppressWarnings(\"unchecked\") public final class ").append(className);
-        sb.append(" implements ").append($Instantiator.class.getCanonicalName()).append(" {\n");
-
-        sb.append("  public static final ").append(className).append(" INSTANCE = new ").append(className).append("();\n");
-        sb.append("  @Override public Object $create(").append($Context.class.getCanonicalName()).append(" $c, ");
-        sb.append(DESCRIPTOR_CLASS_NAME).append("[] $d) {\n");
-        if (fields.containsKey("$d")) {
-            sb.append("    return new ").append(this.className).append("($c, $d);\n");
-        } else {
-            sb.append("    return new ").append(this.className).append("($c);\n");
-        }
-        sb.append("  }\n}\n");
         return sb.toString();
     }
 
@@ -359,6 +348,10 @@ class ClassBuilder {
 
         @Override
         public void appendItself(StringBuilder sb) {
+            if (type == Context.class) {
+                sb.append("$c");
+                return;
+            }
             if (type instanceof Class) {
                 sb.append("(").append(((Class) type).getCanonicalName()).append(") ");
             } else if (type instanceof ParameterizedType) {

@@ -22,32 +22,25 @@ import static org.ibess.cdi.util.Cdi.isChecked;
  */
 public final class InheritorGenerator {
 
-    private static final Map<Class, ClassInfo<?>> cache = new HashMap<>();
+    private static final Map<Class, ClassInfo> cache = new HashMap<>();
 
-    @SuppressWarnings("unchecked")
-    public static <T> Class<? extends T> getSubclass(Class<T> clazz) {
-        ClassInfo<T> ci = (ClassInfo<T>) cache.get(clazz);
+    public static Class getSubclass(Class clazz) {
+        ClassInfo ci = cache.get(clazz);
         if (ci == null || !ci.compiled) {
             synchronized (InheritorGenerator.class) {
-                ci = (ClassInfo<T>) cache.get(clazz);
-                if (ci == null) {
-                    cache.put(clazz, ci = getClassInfo(clazz));
-                }
+                ci = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
                 if (!ci.compiled) {
                     Map<String, String> contents = new HashMap<>();
                     buildSources(ci, contents);
-                    JavaC.compile(contents);
+                    ci.compiledClass = JavaC.compile(contents, ci.resultName);
                 }
             }
         }
-        Class<? extends T> result = ci.compiledClass;
-        if (result == null) {
-            ci.compiledClass = result = (Class<? extends T>) forName(ci.resultName);
-        }
-        return result;
+        Class result = ci.compiledClass;
+        return (result != null) ? result : (ci.compiledClass = forName(ci.resultName));
     }
 
-    private static <T> ClassInfo<T> getClassInfo(Class<T> clazz) {
+    private static ClassInfo getClassInfo(Class<?> clazz) {
         if (isFinal(clazz.getModifiers())) {
             throw new CdiException(FINAL_SCOPED_CLASS, clazz.getCanonicalName());
         }
@@ -62,7 +55,7 @@ public final class InheritorGenerator {
             throw new CdiException(PARAMETERIZED_NON_STATELESS, clazz.getCanonicalName());
         }
 
-        ClassInfo<T> ci = new ClassInfo<>(clazz);
+        ClassInfo ci = new ClassInfo(clazz);
 
         for (Field field : ci.declaredFields) {
             if (injectable(field)) {
@@ -79,25 +72,21 @@ public final class InheritorGenerator {
         return ci;
     }
 
-    private static Class<?> forName(String name) {
+    private static Class forName(String name) {
         try {
             return Class.forName(name);
         } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
+            throw new ImpossibleError(e);
         }
     }
 
-    private static void buildSources(ClassInfo<?> ci, Map<String, String> contents) {
+    private static void buildSources(ClassInfo ci, Map<String, String> contents) {
         if (ci.compiled) return;
         if (contents.containsKey(ci.resultName)) return;
         contents.put(ci.resultName, ci.toString());
-        contents.put(ci.resultName + "0", ci.builder.buildInstantiator());
 
-        for (Class<?> clazz : ci.dependsOn) {
-            ClassInfo<?> info = cache.get(clazz);
-            if (info == null) {
-                cache.put(clazz, info = getClassInfo(clazz));
-            }
+        for (Class clazz : ci.dependsOn) {
+            ClassInfo info = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
             buildSources(info, contents);
         }
         ci.dependsOn = null;
@@ -110,7 +99,7 @@ public final class InheritorGenerator {
         ));
     }
 
-    private static void appendConstructorInvocation(ClassInfo<?> ci) {
+    private static void appendConstructorInvocation(ClassInfo ci) {
         Method constructor = null;
         for (Method method : ci.declaredMethods) {
             if (method.isAnnotationPresent(Constructor.class)) {
@@ -135,7 +124,7 @@ public final class InheritorGenerator {
         ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement("super." + constructor.getName(), params));
     }
 
-    private static <T> void implementMethod(ClassInfo<T> ci, Method method) {
+    private static void implementMethod(ClassInfo ci, Method method) {
         if (!implementable(method)) {
             throw new CdiException(UNIMPLEMENTABLE_ABSTRACT_METHOD, ci.originalName, method.getName());
         }
@@ -169,7 +158,7 @@ public final class InheritorGenerator {
         return field.isAnnotationPresent(Inject.class);
     }
 
-    private static void validateFieldForInjection(ClassInfo<?> ci, Field field) {
+    private static void validateFieldForInjection(ClassInfo ci, Field field) {
         if (isPrivate(field.getModifiers())) {
             throw new CdiException(PRIVATE_FIELD_INJECTION, ci.originalName, field.getName());
         }
@@ -184,9 +173,9 @@ public final class InheritorGenerator {
                 && !method.getReturnType().isPrimitive() && method.isAnnotationPresent(Provided.class); // " lookupable" return type
     }
 
-    private static void validateConstructor(ClassInfo<?> ci, Method constructor) {
-        Class<?>[] exceptions = constructor.getExceptionTypes();
-        for (Class<?> exceptionClass : exceptions) {
+    private static void validateConstructor(ClassInfo ci, Method constructor) {
+        Class[] exceptions = constructor.getExceptionTypes();
+        for (Class exceptionClass : exceptions) {
             if (!isChecked(exceptionClass)) {
                 throw new CdiException(CONSTRUCTOR_THROWS_EXCEPTION, ci.originalName, exceptionClass.getCanonicalName());
             }
@@ -202,7 +191,7 @@ public final class InheritorGenerator {
         }
     }
 
-    private static void validateType(ClassInfo<?> ci, Type type) {
+    private static void validateType(ClassInfo ci, Type type) {
         if (type instanceof Class) {
             Class clazz = (Class) type; // raw type should be validated in future
             if (clazz.isAnnotationPresent(Scoped.class)) {
@@ -233,9 +222,9 @@ public final class InheritorGenerator {
         }
     }
 
-    private static class ClassInfo<T> {
+    private static class ClassInfo {
 
-        public final Class<T>             clazz;
+        public final Class                clazz;
         public final String               originalName;
         public final TypeVariable[]       params;
         public final Map<String, Integer> paramsIndex;
@@ -246,10 +235,10 @@ public final class InheritorGenerator {
         public final ClassBuilder builder;
 
         public boolean compiled = false;
-        public Class<? extends T> compiledClass;
-        public Set<Class<?>> dependsOn = new HashSet<>();
+        public Class compiledClass;
+        public Set<Class> dependsOn = new HashSet<>();
 
-        public ClassInfo(Class<T> clazz) {
+        public ClassInfo(Class clazz) {
             this.clazz          = clazz;
             this.originalName   = clazz.getCanonicalName();
             this.params         = clazz.getTypeParameters();
