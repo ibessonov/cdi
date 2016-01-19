@@ -6,7 +6,6 @@ import org.ibess.cdi.annotations.Provided;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
-import org.ibess.cdi.javac.JavaC;
 import org.ibess.cdi.reflection.ClassBuilder.Expression;
 
 import java.lang.reflect.*;
@@ -26,18 +25,15 @@ public final class InheritorGenerator {
 
     public static Class getSubclass(Class clazz) {
         ClassInfo ci = cache.get(clazz);
-        if (ci == null || !ci.compiled) {
+        if (ci == null || ci.compiledClass == null) {
             synchronized (InheritorGenerator.class) {
                 ci = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
-                if (!ci.compiled) {
-                    Map<String, String> contents = new HashMap<>();
-                    buildSources(ci, contents);
-                    ci.compiledClass = ci.builder.define();
+                if (ci.compiledClass == null) {
+                    compileWithDependencies(ci, new HashSet<>());
                 }
             }
         }
-        Class result = ci.compiledClass;
-        return (result != null) ? result : (ci.compiledClass = ci.builder.define());
+        return ci.compiledClass;
     }
 
     public static ClassInfo getClassInfo(Class<?> clazz) {
@@ -72,26 +68,19 @@ public final class InheritorGenerator {
         return ci;
     }
 
-    private static Class forName(String name) {
-        try {
-            return Class.forName(name);
-        } catch (ClassNotFoundException e) {
-            throw new ImpossibleError(e);
-        }
-    }
+    private static void compileWithDependencies(ClassInfo ci, Set<ClassInfo> dejaVu) {
+        if (ci.compiledClass != null) return;
+        if (dejaVu.contains(ci)) return;
 
-    private static void buildSources(ClassInfo ci, Map<String, String> contents) {
-        if (ci.compiled) return;
-        if (contents.containsKey(ci.resultName)) return;
-        contents.put(ci.resultName, ci.toString());
-
+        dejaVu.add(ci);
         for (Class clazz : ci.dependsOn) {
             ClassInfo info = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
-            buildSources(info, contents);
+            compileWithDependencies(info, dejaVu);
         }
 
+        ci.compiledClass = ci.builder.define();
         ci.dependsOn = null;
-        ci.compiled = true;
+        ci.builder = null;
     }
 
     private static void appendFieldConstruction(ClassInfo ci, Field field) {
@@ -122,7 +111,8 @@ public final class InheritorGenerator {
             validateLookup(ci, parameterTypes[i]);
             params.add(ci.builder.newLookupExpression(parameterTypes[i]));
         }
-        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement(constructor.getName(), params, parameterTypes, constructor.getReturnType()));
+        Expression self = ci.builder.newThisExpression();
+        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement(constructor, self, params));
     }
 
     private static void implementMethod(ClassInfo ci, Method method) {
@@ -132,7 +122,7 @@ public final class InheritorGenerator {
 
         validateLookup(ci, method.getGenericReturnType());
 
-        ClassBuilder.MethodInfo newMethod = ci.builder.createNewMethod(method.getName(), method.getGenericReturnType());
+        ClassBuilder.MethodInfo newMethod = ci.builder.createNewMethod(method.getName(), method.getReturnType());
         newMethod.addStatement(ci.builder.newReturnStatement(ci.builder.newLookupExpression(method.getGenericReturnType())));
     }
 
@@ -211,11 +201,10 @@ public final class InheritorGenerator {
                 }
                 ci.dependsOn.add(clazz);
             }
-        } else if (type instanceof TypeVariable) {
+//        } else if (type instanceof TypeVariable) {
             // remember it for future checks
-            TypeVariable typeVariable = (TypeVariable) type;
-            int index = ci.paramsIndex.get(typeVariable.getName());
-            // we need to have context for this type variable and its index in outer declaration!
+//            TypeVariable typeVariable = (TypeVariable) type;
+//            int index = ci.paramsIndex.get(typeVariable.getName());
         } else if (type instanceof WildcardType) {
             throw new CdiException(WILDCARD_TYPE_PARAMETER, ci.originalName);
         } else if (type instanceof GenericArrayType) {
@@ -225,34 +214,20 @@ public final class InheritorGenerator {
 
     public static class ClassInfo {
 
-        public final Class                clazz;
         public final String               originalName;
-        public final TypeVariable[]       params;
-        public final Map<String, Integer> paramsIndex;
         public final Field[]              declaredFields;
         public final Method[]             declaredMethods;
-        public final String               resultName;
 
-        public final ClassBuilder builder;
+        public ClassBuilder builder;
 
-        public boolean compiled = false;
-        public Class compiledClass;
+        public Class compiledClass = null;
         public Set<Class> dependsOn = new HashSet<>();
 
         public ClassInfo(Class clazz) {
-            this.clazz          = clazz;
             this.originalName   = clazz.getCanonicalName();
-            this.params         = clazz.getTypeParameters();
-
-            this.paramsIndex    = new HashMap<>();
-            for (int i = 0, length = params.length; i < length; i++) {
-                paramsIndex.put(params[i].getName(), i);
-            }
 
             this.declaredFields  = clazz.getDeclaredFields();
             this.declaredMethods = clazz.getDeclaredMethods();
-
-            this.resultName = clazz.getName() + ClassBuilder.SUFFIX;
 
             builder = new ClassBuilder(clazz);
         }

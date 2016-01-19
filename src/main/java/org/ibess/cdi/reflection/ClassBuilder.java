@@ -3,90 +3,80 @@ package org.ibess.cdi.reflection;
 import org.ibess.cdi.Context;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.ImpossibleError;
-import org.ibess.cdi.internal.$Context;
-import org.ibess.cdi.internal.$Descriptor;
-import org.ibess.cdi.javac.JavaC;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
+import java.lang.reflect.*;
 import java.util.*;
 
+import static org.ibess.cdi.javac.CdiClassLoader.defineClass;
+import static org.ibess.cdi.reflection.ClassBuilderConstants.*;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
 import static org.objectweb.asm.Opcodes.*;
+import static org.objectweb.asm.Type.*;
 
 /**
  * @author ibessonov
  */
-// this one has to be refactored
+//TODO separate "tree construction" from bytecode generation
 public class ClassBuilder {
-
-    public static final String SUFFIX = "$Cdi";
-    private static final String DESCRIPTOR_CLASS_NAME = $Descriptor.class.getCanonicalName();
-
-    private final String thePackage;
-    private final String className;
-    private final Class<?> superClass;
-    private final TypeVariable[] params;
-
-    private final Map<String, FieldInfo> fields = new HashMap<>();
-    private final Set<MethodInfo> methods = new HashSet<>();
-    private final MethodInfo construct;
-
-    private final Map<String, Integer> paramsIndex;
-    private boolean hasContext = false;
-    private boolean hasDescriptors = false;
 
     private final String internalName;
     private final String internalNameCdi;
     private final String internalNameCdiI;
 
+    private final Map<String, String> fields = new HashMap<>();
+    private final Set<MethodInfo> methods = new HashSet<>();
+
+    private final Map<String, Integer> paramsIndex = new HashMap<>();
+
+    private boolean hasContext = false;
+    private boolean hasDescriptors = false;
+    private MethodInfo construct = null;
+
     public ClassBuilder(Class<?> superClass) {
-        this.superClass = superClass;
-        this.thePackage = superClass.getPackage().getName();
-        this.className = superClass.getName().substring(thePackage.length() + 1) + SUFFIX;
-        this.params = superClass.getTypeParameters();
-        this.construct = new MethodInfo("$construct", void.class);
-        this.methods.add(construct);
+        this.internalName     = getInternalName(superClass);
+        this.internalNameCdi  = internalName + CDI_SUFFIX;
+        this.internalNameCdiI = internalNameCdi + $ + I_SUFFIX;
 
-        this.paramsIndex    = new HashMap<>();
+        TypeVariable[] params = superClass.getTypeParameters();
         for (int i = 0; i < params.length; i++) {
-            paramsIndex.put(params[i].getName(), i);
+            this.paramsIndex.put(params[i].getName(), i);
         }
-
-        this.internalName     = superClass.getName().replace('.', '/');
-        this.internalNameCdi  = internalName + "$Cdi";
-        this.internalNameCdiI = internalName + "$Cdi$$I";
     }
 
     private void requiresContextField() {
-        this.hasContext = true;
-        if (!fields.containsKey("$c")) {
-            FieldInfo $c = new FieldInfo("$c", $Context.class);
-            fields.put("$c", $c);
+        if (!hasContext) {
+            hasContext = true;
+            fields.put(CONTEXT_F_NAME, CONTEXT_DESCR);
         }
     }
 
     private void requiresDescriptorsField() {
-        this.hasDescriptors = true;
-        if (!fields.containsKey("$d")) {
-            FieldInfo $d = new FieldInfo("$d", $Descriptor[].class);
-            fields.put("$d", $d);
+        if (!hasDescriptors) {
+            hasDescriptors = true;
+            fields.put(DESCRIPTOR_F_NAME, DESCRIPTOR_A_DESCR);
         }
     }
 
     public MethodInfo getConstructMethod() {
+        MethodInfo construct = this.construct;
+        if (construct == null) {
+            this.construct = construct = new MethodInfo(CONSTRUCT_M_NAME, VOID_TYPE);
+            this.methods.add(construct);
+        }
         return construct;
     }
 
-    public MethodInfo createNewMethod(String name, Type returnType) {
-        MethodInfo method = new MethodInfo(name, returnType);
+    public MethodInfo createNewMethod(String name, Class returnType) {
+        MethodInfo method = new MethodInfo(name, getType(returnType));
         methods.add(method);
         return method;
+    }
+
+    public Expression newThisExpression() {
+        return new ThisExpression();
     }
 
     public Expression newLookupExpression(Type type) {
@@ -97,8 +87,8 @@ public class ClassBuilder {
         return new AssignmentStatement(field, value);
     }
 
-    public Statement newMethodCallStatement(String methodName, List<Expression> params, Type[] types, Class<?> returnType) {
-        return new MethodCallStatement(methodName, params, types, returnType);
+    public Statement newMethodCallStatement(Method method, Expression self, List<Expression> params) {
+        return new MethodCallStatement(method, self, params);
     }
 
     public Statement newReturnStatement(Expression value) {
@@ -110,17 +100,14 @@ public class ClassBuilder {
 
         ClassWriter cw = new ClassWriter(COMPUTE_MAXS | COMPUTE_FRAMES); // flags: compute nothing
         cw.visit(V1_8, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalNameCdi, null,
-                internalName, new String[]{"org/ibess/cdi/internal/$CdiObject"});
-        cw.visitInnerClass(internalNameCdiI, internalNameCdi, "$I", ACC_PUBLIC | ACC_STATIC | ACC_FINAL);
+                internalName, new String[]{ CDI_OBJECT_INTERNAL });
+        cw.visitInnerClass(internalNameCdiI, internalNameCdi, I_SUFFIX, ACC_PUBLIC | ACC_STATIC | ACC_FINAL);
         // other inner classes
 
         // fields
-        cw.visitField(ACC_PUBLIC | ACC_STATIC | ACC_FINAL, "$i", "L" + internalName + "$Cdi$$I;", null, null).visitEnd();
-        for (FieldInfo field : fields.values()) {
-            String type = field.type.isArray()
-                    ? field.type.getName().replace('.', '/')
-                    : "L" + field.type.getName().replace('.', '/') + ";";
-            cw.visitField(ACC_PRIVATE | ACC_FINAL, field.name, type, null, null).visitEnd();
+        cw.visitField(ACC_PUBLIC | ACC_STATIC | ACC_FINAL, INSTANCE_F_NAME, "L" + internalNameCdiI + ";", null, null).visitEnd();
+        for (Map.Entry<String, String> entry : fields.entrySet()) {
+            cw.visitField(ACC_PRIVATE | ACC_FINAL, entry.getKey(), entry.getValue(), null, null).visitEnd();
         }
 
         for (MethodInfo method : methods) {
@@ -130,25 +117,25 @@ public class ClassBuilder {
 
         // <init>
         {
-            String fstParam = hasContext ? "Lorg/ibess/cdi/internal/$Context;" : "";
-            String sndParam = hasDescriptors ? "[Lorg/ibess/cdi/internal/$Descriptor;" : "";
+            String fstParam = hasContext ? CONTEXT_DESCR : "";
+            String sndParam = hasDescriptors ? DESCRIPTOR_A_DESCR : "";
 
-            MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "<init>", "(" + fstParam + sndParam + ")V", null, null);
+            MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, INIT_M_NAME, "(" + fstParam + sndParam + ")V", null, null);
             mv.visitCode();
 
             mv.visitVarInsn(ALOAD, 0);
-            mv.visitMethodInsn(INVOKESPECIAL, internalName, "<init>", "()V", false);
+            mv.visitMethodInsn(INVOKESPECIAL, internalName, INIT_M_NAME, INIT_M_DESCR, false);
 
             if (hasContext) {
                 mv.visitVarInsn(ALOAD, 0);
                 mv.visitVarInsn(ALOAD, 1);
-                mv.visitFieldInsn(PUTFIELD, internalNameCdi, "$c", fstParam);
+                mv.visitFieldInsn(PUTFIELD, internalNameCdi, CONTEXT_F_NAME, fstParam);
             }
 
             if (hasDescriptors) {
                 mv.visitVarInsn(ALOAD, 0);
                 mv.visitVarInsn(ALOAD, hasContext ? 2 : 1);
-                mv.visitFieldInsn(PUTFIELD, internalNameCdi, "$d", sndParam);
+                mv.visitFieldInsn(PUTFIELD, internalNameCdi, DESCRIPTOR_F_NAME, sndParam);
             }
 
             mv.visitInsn(RETURN);
@@ -158,31 +145,31 @@ public class ClassBuilder {
 
         // <clinit>
         {
-            MethodVisitor mv = cw.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
+            MethodVisitor mv = cw.visitMethod(ACC_STATIC, CLINIT_M_NAME, INIT_M_DESCR, null, null);
             mv.visitCode();
             mv.visitTypeInsn(NEW, internalNameCdiI);
             mv.visitInsn(DUP);
-            mv.visitMethodInsn(INVOKESPECIAL, internalNameCdiI, "<init>", "()V", false);
-            mv.visitFieldInsn(PUTSTATIC, internalNameCdi, "$i", "L" + internalName + "$Cdi$$I;");
+            mv.visitMethodInsn(INVOKESPECIAL, internalNameCdiI, INIT_M_NAME, INIT_M_DESCR, false);
+            mv.visitFieldInsn(PUTSTATIC, internalNameCdi, INSTANCE_F_NAME, "L" + internalNameCdiI + ";");
             mv.visitInsn(RETURN);
             mv.visitMaxs(0, 0);
             mv.visitEnd();
         }
 
-        return JavaC.defineClass(superClass.getName() + "$Cdi", cw.toByteArray());
+        return defineClass(cw.toByteArray());
     }
 
     private void defineInstantiator() {
         ClassWriter cw = new ClassWriter(COMPUTE_MAXS | COMPUTE_FRAMES);
-        cw.visit(V1_8, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalNameCdiI, null, "java/lang/Object", new String[]{"org/ibess/cdi/internal/$Instantiator"});
-        cw.visitInnerClass(internalNameCdiI, internalNameCdi, "$I", ACC_PUBLIC | ACC_STATIC | ACC_FINAL);
+        cw.visit(V1_8, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalNameCdiI, null, OBJECT_INTERNAL, new String[]{ INSTANTIATOR_INTERNAL });
+        cw.visitInnerClass(internalNameCdiI, internalNameCdi, I_SUFFIX, ACC_PUBLIC | ACC_STATIC | ACC_FINAL);
 
         // <init>
         {
-            MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
+            MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, INIT_M_NAME, INIT_M_DESCR, null, null);
             mv.visitCode();
             mv.visitVarInsn(ALOAD, 0);
-            mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+            mv.visitMethodInsn(INVOKESPECIAL, OBJECT_INTERNAL, INIT_M_NAME, INIT_M_DESCR, false);
             mv.visitInsn(RETURN);
             mv.visitMaxs(0, 0);
             mv.visitEnd();
@@ -190,10 +177,10 @@ public class ClassBuilder {
 
         // $create
         {
-            String fstParam = hasContext ? "Lorg/ibess/cdi/internal/$Context;" : "";
-            String sndParam = hasDescriptors ? "[Lorg/ibess/cdi/internal/$Descriptor;" : "";
+            String fstParam = hasContext ? CONTEXT_DESCR : "";
+            String sndParam = hasDescriptors ? DESCRIPTOR_A_DESCR : "";
 
-            MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "$create", "(Lorg/ibess/cdi/internal/$Context;[Lorg/ibess/cdi/internal/$Descriptor;)Ljava/lang/Object;", null, null);
+            MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, CREATE_M_NAME, CREATE_M_DESCR, null, null);
             mv.visitCode();
             mv.visitTypeInsn(NEW, internalNameCdi);
             mv.visitInsn(DUP);
@@ -203,62 +190,26 @@ public class ClassBuilder {
             if (hasDescriptors) {
                 mv.visitVarInsn(ALOAD, 2);
             }
-            mv.visitMethodInsn(INVOKESPECIAL, internalNameCdi, "<init>", "(" + fstParam + sndParam + ")V", false);
+            mv.visitMethodInsn(INVOKESPECIAL, internalNameCdi, INIT_M_NAME, "(" + fstParam + sndParam + ")V", false);
             mv.visitInsn(ARETURN);
             mv.visitMaxs(0, 0);
             mv.visitEnd();
         }
         cw.visitEnd();
 
-        JavaC.defineClass(superClass.getName() + "$Cdi$$I", cw.toByteArray());
+        defineClass(cw.toByteArray());
     }
 
-    private interface Appendable {
-
-        default void appendItself(StringBuilder sb) {};
-
-        static void appendCommaSeparated(List<? extends Appendable> list, StringBuilder sb) {
-            if (!list.isEmpty()) {
-                list.get(0).appendItself(sb);
-                for (int i = 1, size = list.size(); i < size; i++) {
-                    sb.append(", ");
-                    list.get(i).appendItself(sb);
-                }
-            }
-        }
-    }
-
-    private static class FieldInfo implements Appendable {
-        private String name;
-        private Class type;
-        private boolean isStatic = false;
-
-        FieldInfo(String name, Class type) {
-            this.name = name;
-            this.type = type;
-        }
-    }
-
-    static class MethodInfo implements Appendable {
+    static class MethodInfo {
 
         private final String name;
-        private final Type returnType;
-        private final List<ParameterInfo> params = new ArrayList<>();
+        private final org.objectweb.asm.Type returnType;
+        private final List<Class> params = new ArrayList<>();
         private final List<Statement> statements = new ArrayList<>();
 
-        MethodInfo(String name, Type returnType) {
+        MethodInfo(String name, org.objectweb.asm.Type returnType) {
             this.name = name;
             this.returnType = returnType;
-        }
-
-        ParameterInfo addParameter(String name, Class type) {
-            ParameterInfo param = new ParameterInfo(name, type);
-            params.add(param);
-            return param;
-        }
-
-        public ParameterInfo getParameter(int index) {
-            return params.get(index);
         }
 
         public void addStatement(Statement statement) {
@@ -266,14 +217,11 @@ public class ClassBuilder {
         }
 
         public MethodVisitor visitMethod(ClassWriter cw) {
-            StringBuilder desc = new StringBuilder("(");
-            for (ParameterInfo param : params) {
-                String s = internalType(param.type);
-                desc.append(s);
+            org.objectweb.asm.Type[] types = new org.objectweb.asm.Type[params.size()];
+            for (int i = 0, size = params.size(); i < size; i++) {
+                types[i] = getType(params.get(i));
             }
-            desc.append(")");
-            desc.append(internalType(returnType));
-            return cw.visitMethod(ACC_PUBLIC, name, desc.toString(), null, null);
+            return cw.visitMethod(ACC_PUBLIC, name, getMethodDescriptor(returnType, types), null, null);
         }
 
         public void appendCode(MethodVisitor mv) {
@@ -281,7 +229,7 @@ public class ClassBuilder {
             for (Statement statement : statements) {
                 statement.appendCode(mv);
             }
-            if (returnType == void.class) {
+            if (returnType == VOID_TYPE) {
                 mv.visitInsn(RETURN);
             }
             mv.visitMaxs(0, 0);
@@ -289,40 +237,19 @@ public class ClassBuilder {
         }
     }
 
-    private static String internalType(Type returnType) {
-        Class c;
-        if (returnType instanceof Class) {
-            c = (Class) returnType;
-        } else if (returnType instanceof ParameterizedType) {
-            c = (Class) ((ParameterizedType) returnType).getRawType();
+    private static String internalType(Type type) {
+        Class clazz;
+        if (type instanceof Class) {
+            clazz = (Class) type;
+        } else if (type instanceof ParameterizedType) {
+            clazz = (Class) ((ParameterizedType) type).getRawType();
         } else {
-            c = Object.class;
+            clazz = Object.class;
         }
-        if (c.isPrimitive()) {
-            if (c == boolean.class) return "Z";
-            if (c == byte.class) return "B";
-            if (c == char.class) return "C";
-            if (c == double.class) return "D";
-            if (c == float.class) return "F";
-            if (c == int.class) return "I";
-            if (c == long.class) return "J";
-            if (c == short.class) return "S";
-            if (c == void.class) return "V";
-        }
-        return c.isArray()
-                ? c.getName().replace('.', '/')
-                : "L" + c.getName().replace('.', '/') + ";";
+        return getDescriptor(clazz);
     }
 
-    static class ParameterInfo implements Appendable {
-        private final Class type;
-
-        ParameterInfo(String name, Class type) {
-            this.type = type;
-        }
-    }
-
-    public interface Statement extends Appendable {
+    public interface Statement {
         void appendCode(MethodVisitor mv);
     }
 
@@ -339,7 +266,8 @@ public class ClassBuilder {
         public void appendCode(MethodVisitor mv) {
             mv.visitVarInsn(ALOAD, 0);
             value.appendCode(mv);
-            mv.visitFieldInsn(PUTFIELD, internalName, field.getName(), internalType(field.getType()));
+            Class<?> declaringClass = field.getDeclaringClass();
+            mv.visitFieldInsn(PUTFIELD, internalType(declaringClass), field.getName(), internalType(field.getType()));
         }
     }
 
@@ -357,9 +285,17 @@ public class ClassBuilder {
         }
     }
 
-    public interface Expression extends Appendable {
+    public interface Expression {
 
         void appendCode(MethodVisitor mv);
+    }
+
+    private static class ThisExpression implements Expression {
+
+        @Override
+        public void appendCode(MethodVisitor mv) {
+            mv.visitVarInsn(ALOAD, 0);
+        }
     }
 
     private class ComplexInjectionExpression implements Expression {
@@ -395,7 +331,7 @@ public class ClassBuilder {
         public void appendCode(MethodVisitor mv) {
             if (type == Context.class) {
                 mv.visitVarInsn(ALOAD, 0);
-                mv.visitFieldInsn(GETFIELD, internalNameCdi, "$c", "Lorg/ibess/cdi/internal/$Context;");
+                mv.visitFieldInsn(GETFIELD, internalNameCdi, CONTEXT_F_NAME, CONTEXT_DESCR);
                 return;
             }
 
@@ -408,24 +344,19 @@ public class ClassBuilder {
                     String actualTypeVariableName = actualTypeVariable.getName();
 
                     mv.visitVarInsn(ALOAD, 0);
-                    mv.visitFieldInsn(GETFIELD, internalNameCdi, "$d", "[Lorg/ibess/cdi/internal/$Descriptor;");
+                    mv.visitFieldInsn(GETFIELD, internalNameCdi, DESCRIPTOR_F_NAME, DESCRIPTOR_A_DESCR);
                     int index = paramsIndex.get(actualTypeVariableName);
-                    if (index < 6) {
-                        mv.visitInsn(ICONST_0 + index);
-                    } else {
-                        mv.visitVarInsn(SIPUSH, index);
-                    }
+                    visitIntConst(mv, index);
                     mv.visitInsn(AALOAD);
-                    mv.visitFieldInsn(GETFIELD, "Lorg/ibess/cdi/internal/$Descriptor;", "c", "Ljava/lang/Class;");
+                    mv.visitFieldInsn(GETFIELD, DESCRIPTOR_DESCR, DESCRIPTOR_CLASS_F_NAME, CLASS_DESCR);
                     return;
                 }
             }
 
             mv.visitVarInsn(ALOAD, 0);
-            mv.visitVarInsn(ALOAD, 0);
-            mv.visitFieldInsn(GETFIELD, internalNameCdi, "$c", "Lorg/ibess/cdi/internal/$Context;");
+            mv.visitFieldInsn(GETFIELD, internalNameCdi, CONTEXT_F_NAME, CONTEXT_DESCR);
             appendDescriptor(mv, type);
-            mv.visitMethodInsn(INVOKEINTERFACE, "org/ibess/cdi/internal/$Context", "$lookup", "(Lorg/ibess/cdi/internal/$Descriptor;)Ljava/lang/Object;", true);
+            mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, LOOKUP_M_NAME, LOOKUP_M_DESCR, true);
             String internalType = internalType(this.type);
             mv.visitTypeInsn(CHECKCAST, internalType.substring(1, internalType.length() - 1));
         }
@@ -433,24 +364,20 @@ public class ClassBuilder {
         private void appendDescriptor(MethodVisitor mv, Type currentType) {
             if (currentType instanceof TypeVariable) {
                 mv.visitVarInsn(ALOAD, 0);
-                mv.visitFieldInsn(GETFIELD, internalNameCdi, "$d", "[Lorg/ibess/cdi/internal/$Descriptor;");
+                mv.visitFieldInsn(GETFIELD, internalNameCdi, DESCRIPTOR_F_NAME, DESCRIPTOR_A_DESCR);
                 int index = paramsIndex.get(currentType.getTypeName());
-                if (index < 6) {
-                    mv.visitInsn(ICONST_0 + index);
-                } else {
-                    mv.visitVarInsn(SIPUSH, index);
-                }
+                visitIntConst(mv, index);
                 mv.visitInsn(AALOAD);
             } else {
                 if (currentType instanceof ParameterizedType) {
                     ParameterizedType parameterizedType = (ParameterizedType) currentType;
                     Class clazz = (Class) parameterizedType.getRawType();
 
-                    mv.visitLdcInsn(org.objectweb.asm.Type.getType(internalType(clazz)));
+                    mv.visitLdcInsn(getType(internalType(clazz)));
                     if (clazz.isAnnotationPresent(Scoped.class)) {
                         Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
                         if (actualTypeArguments.length == 0) {
-                            mv.visitMethodInsn(INVOKESTATIC, "org/ibess/cdi/internal/$Descriptor", "$0", "(Ljava/lang/Class;)Lorg/ibess/cdi/internal/$Descriptor;", false);
+                            mv.visitMethodInsn(INVOKESTATIC, DESCRIPTOR_INTERNAL, DESCRIPTOR0_M_NAME, DESCRIPTOR0_M_DESCR, false);
                         } else {
                             boolean optimize = true;
                             for (int i = 0, length = actualTypeArguments.length; i < length; i++) {
@@ -465,36 +392,28 @@ public class ClassBuilder {
 
                             if (optimize) {
                                 mv.visitVarInsn(ALOAD, 0);
-                                mv.visitFieldInsn(GETFIELD, internalNameCdi, "$d", "[Lorg/ibess/cdi/internal/$Descriptor;");
+                                mv.visitFieldInsn(GETFIELD, internalNameCdi, DESCRIPTOR_F_NAME, DESCRIPTOR_A_DESCR);
                             } else {
                                 int index = 0, length = actualTypeArguments.length;
-                                if (length < 6) {
-                                    mv.visitInsn(ICONST_0 + length);
-                                } else {
-                                    mv.visitVarInsn(SIPUSH, length);
-                                }
-                                mv.visitTypeInsn(ANEWARRAY, "org/ibess/cdi/internal/$Descriptor");
+                                visitIntConst(mv, length);
+                                mv.visitTypeInsn(ANEWARRAY, DESCRIPTOR_INTERNAL);
                                 for (Type actualTypeArgument : actualTypeArguments) {
                                     mv.visitInsn(DUP);
-                                    if (index < 6) {
-                                        mv.visitInsn(ICONST_0 + index);
-                                    } else {
-                                        mv.visitVarInsn(SIPUSH, index);
-                                    }
+                                    visitIntConst(mv, index);
                                     appendDescriptor(mv, actualTypeArgument);
                                     mv.visitInsn(AASTORE);
                                     index++;
                                 }
                             }
-                            mv.visitMethodInsn(INVOKESTATIC, "org/ibess/cdi/internal/$Descriptor", "$", "(Ljava/lang/Class;[Lorg/ibess/cdi/internal/$Descriptor;)Lorg/ibess/cdi/internal/$Descriptor;", false);
+                            mv.visitMethodInsn(INVOKESTATIC, DESCRIPTOR_INTERNAL, DESCRIPTOR_M_NAME, DESCRIPTOR_M_DESCR, false);
                         }
                     } else {
-                        mv.visitMethodInsn(INVOKESTATIC, "org/ibess/cdi/internal/$Descriptor", "$0", "(Ljava/lang/Class;)Lorg/ibess/cdi/internal/$Descriptor;", false);
+                        mv.visitMethodInsn(INVOKESTATIC, DESCRIPTOR_INTERNAL, DESCRIPTOR0_M_NAME, DESCRIPTOR0_M_DESCR, false);
                     }
                 } else if (currentType instanceof Class) {
                     Class clazz = (Class) currentType;
-                    mv.visitLdcInsn(org.objectweb.asm.Type.getType(internalType(clazz)));
-                    mv.visitMethodInsn(INVOKESTATIC, "org/ibess/cdi/internal/$Descriptor", "$0", "(Ljava/lang/Class;)Lorg/ibess/cdi/internal/$Descriptor;", false);
+                    mv.visitLdcInsn(getType(internalType(clazz)));
+                    mv.visitMethodInsn(INVOKESTATIC, DESCRIPTOR_INTERNAL, DESCRIPTOR0_M_NAME, DESCRIPTOR0_M_DESCR, false);
                 } else {
                     throw new ImpossibleError();
                 }
@@ -502,37 +421,35 @@ public class ClassBuilder {
         }
     }
 
-    private class MethodCallStatement implements Statement {
-        private String name;
-        private List<Expression> params;
-        private Type[] types;
-        private Class<?> returnType;
+    private static class MethodCallStatement implements Statement {
 
-        MethodCallStatement(String name, List<Expression> params, Type[] types, Class<?> returnType) {
-            this.name = name;
+        private final Method method;
+        private final Expression self;
+        private final List<Expression> params;
+
+        public MethodCallStatement(Method method, Expression self, List<Expression> params) {
+            this.method = method;
+            this.self = self;
             this.params = params;
-            this.types = types;
-            this.returnType = returnType;
-        }
-
-        @Override
-        public void appendItself(StringBuilder sb) {
-            sb.append("    ").append(name).append("(");
-            Appendable.appendCommaSeparated(params, sb);
-            sb.append(");\n");
         }
 
         @Override
         public void appendCode(MethodVisitor mv) {
+            self.appendCode(mv);
             for (Expression param : params) {
                 param.appendCode(mv);
             }
-            StringBuilder desc = new StringBuilder("(");
-            for (Type type : types) {
-                desc.append(internalType(type));
-            }
-            desc.append(")").append(internalType(returnType));
-            mv.visitMethodInsn(INVOKESPECIAL, internalName, name, desc.toString(), false);
+            Class<?> clazz = method.getDeclaringClass();
+            mv.visitMethodInsn(INVOKESPECIAL, getInternalName(clazz), method.getName(),
+                    getMethodDescriptor(method), clazz.isInterface());
+        }
+    }
+
+    private static void visitIntConst(MethodVisitor mv, int index) {
+        if (index < 6) {
+            mv.visitInsn(ICONST_0 + index);
+        } else {
+            mv.visitVarInsn(SIPUSH, index);
         }
     }
 }

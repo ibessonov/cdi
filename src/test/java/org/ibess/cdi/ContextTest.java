@@ -153,8 +153,20 @@ public class ContextTest {
 
     @Test(timeout = 100)
     public void zLookupPerformance() {
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < 5000; i++) {
             context.$lookup($(GenericPair.class, $0(String.class), $0(List.class)));
         }
     }
+
+//    static class MyClass<T> {
+//
+//        void process(Class<T> c) { }
+//
+//        Class<? extends T> create() { return null; }
+//
+//        static void g() {
+//            MyClass<?> myClass = new MyClass<>();
+//            myClass.process(myClass.create());
+//        }
+//    }
 }
