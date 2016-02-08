@@ -1,4 +1,4 @@
-package org.ibess.cdi.reflection;
+package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
@@ -30,6 +30,10 @@ interface ClassBuilderConstants {
     String CONSTRUCT_M_NAME        = "$construct";
     String CREATE_M_NAME           = "$create";
     String LOOKUP_M_NAME           = "$lookup";
+    String UNSCOPED_M_NAME         = "$unscoped";
+    String SINGLETON_M_NAME        = "$singleton";
+    String STATELESS_M_NAME        = "$stateless";
+    String REQUEST_M_NAME          = "$request";
 
     String CONTEXT_INTERNAL        = getInternalName($Context.class);
     String DESCRIPTOR_INTERNAL     = getInternalName($Descriptor.class);
@@ -40,18 +44,24 @@ interface ClassBuilderConstants {
     String CONTEXT_DESCR           = getDescriptor($Context.class);
     String DESCRIPTOR_DESCR        = getDescriptor($Descriptor.class);
     String DESCRIPTOR_A_DESCR      = getDescriptor($Descriptor[].class);
+    String CDI_OBJ_DESCR           = getDescriptor($CdiObject.class);
     String OBJECT_DESCR            = getDescriptor(Object.class);
     String CLASS_DESCR             = getDescriptor(Class.class);
 
     Type   CONTEXT_TYPE            = getType(CONTEXT_DESCR);
     Type   DESCRIPTOR_TYPE         = getType(DESCRIPTOR_DESCR);
     Type   DESCRIPTOR_A_TYPE       = getType(DESCRIPTOR_A_DESCR);
+    Type   CDI_OBJ_TYPE            = getType(CDI_OBJ_DESCR);
     Type   OBJECT_TYPE             = getType(OBJECT_DESCR);
     Type   CLASS_TYPE              = getType(CLASS_DESCR);
 
     String INIT_M_DESCR            = getMethodDescriptor(VOID_TYPE);
-    String CREATE_M_DESCR          = getMethodDescriptor(OBJECT_TYPE, CONTEXT_TYPE, DESCRIPTOR_A_TYPE);
+    String CREATE_M_DESCR          = getMethodDescriptor(CDI_OBJ_TYPE, CONTEXT_TYPE, DESCRIPTOR_A_TYPE);
     String LOOKUP_M_DESCR          = getMethodDescriptor(OBJECT_TYPE, DESCRIPTOR_TYPE);
+    String UNSCOPED_M_DESCR        = getMethodDescriptor(OBJECT_TYPE, CLASS_TYPE);
+    String SINGLETON_M_DESCR       = LOOKUP_M_DESCR;
+    String STATELESS_M_DESCR       = LOOKUP_M_DESCR;
+    String REQUEST_M_DESCR         = LOOKUP_M_DESCR;
     String DESCRIPTOR_M_DESCR      = getMethodDescriptor(DESCRIPTOR_TYPE, CLASS_TYPE, DESCRIPTOR_A_TYPE);
     String DESCRIPTOR0_M_DESCR     = getMethodDescriptor(DESCRIPTOR_TYPE, CLASS_TYPE);
 }

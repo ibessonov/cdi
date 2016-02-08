@@ -3,6 +3,7 @@ package org.ibess.cdi.internal;
 import org.ibess.cdi.Context;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
+import org.ibess.cdi.exceptions.ImpossibleError;
 
 import static org.ibess.cdi.enums.CdiErrorType.GENERIC_PARAMETERS_COUNT_MISMATCH;
 import static org.ibess.cdi.internal.$Descriptor.$0;
@@ -14,18 +15,47 @@ import static org.ibess.cdi.internal.$Descriptor.$0;
  */
 public interface $Context extends Context {
 
-    Object $lookup($Descriptor d);
+    default Object $lookup($Descriptor d) {
+        Scoped scoped = d.c.getAnnotation(Scoped.class);
+        if (scoped == null) {
+            return $unscoped(d.c);
+        } else switch (scoped.value()) {
+            case SINGLETON:
+                return $singleton(d);
+            case STATELESS:
+                return $stateless(d);
+            case REQUEST:
+                return $request(d);
+            default: throw new ImpossibleError();
+        }
+    }
+
+    Object $unscoped(Class c);
+    Object $singleton($Descriptor d);
+    Object $stateless($Descriptor d);
+    Object $request($Descriptor d);
 
     /**
      * {@inheritDoc}
      */
     @Override
     default <T> T lookup(Class<T> clazz) {
-        if (clazz.isAnnotationPresent(Scoped.class) && clazz.getTypeParameters().length != 0) {
+        Scoped scoped = clazz.getAnnotation(Scoped.class);
+        if (scoped != null && clazz.getTypeParameters().length != 0) {
             throw new CdiException(GENERIC_PARAMETERS_COUNT_MISMATCH,
                     clazz.getCanonicalName(), clazz.getTypeParameters().length, 0);
         }
 
-        return clazz.cast($lookup($0(clazz)));
+        if (scoped == null) {
+            return clazz.cast($unscoped(clazz));
+        } else switch (scoped.value()) {
+            case SINGLETON:
+                return clazz.cast($singleton($0(clazz)));
+            case STATELESS:
+                return clazz.cast($stateless($0(clazz)));
+            case REQUEST:
+                return clazz.cast($request($0(clazz)));
+            default: throw new ImpossibleError();
+        }
     }
 }

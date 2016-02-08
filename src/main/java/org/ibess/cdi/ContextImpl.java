@@ -1,7 +1,6 @@
 package org.ibess.cdi;
 
-import org.ibess.cdi.annotations.Scoped;
-import org.ibess.cdi.enums.Scope;
+import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
@@ -14,44 +13,25 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import static org.ibess.cdi.reflection.InheritorGenerator.getSubclass;
-import static org.ibess.cdi.reflection.ReflectionUtil.newInstance;
-import static org.ibess.cdi.util.Cdi.silent;
+import static org.ibess.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
+import static org.ibess.cdi.runtime.InheritorGenerator.getSubclass;
 
 /**
  * @author ibessonov
  */
 final class ContextImpl implements $Context {
 
-    @Override
-    public Object $lookup($Descriptor d) {
-        Scope scope = scope(d.c);
-        if (scope == null) {
-            return newUnscoped(d.c);
-        }
-        switch (scope) {
-            case SINGLETON:
-                return lookupSingleton(d);
-            case STATELESS:
-                return lookupStateless(d);
-            case REQUEST:
-                return lookupRequestScoped(d);
-            default:
-                throw new ImpossibleError();
-        }
-    }
-
     private static final Map<Class, Class> defaults = new HashMap<>();
-    private Object newUnscoped(Class clazz) {
+    @Override public Object $unscoped(Class clazz) {
         if (clazz.isInterface()) {
             clazz = defaults.get(clazz);
         }
-        return newInstance(clazz);
+        return instantiate(clazz);
     }
 
     private final Map<$Descriptor, Object> singletons = new HashMap<>();
     private final ReadWriteLock            rwLock     = new ReentrantReadWriteLock();
-    private Object lookupSingleton($Descriptor d) {
+    @Override public Object $singleton($Descriptor d) {
         rwLock.readLock().lock();
         Object object = singletons.get(d);
         rwLock.readLock().unlock();
@@ -60,14 +40,15 @@ final class ContextImpl implements $Context {
             rwLock.writeLock().lock();
             try {
                 if ((object = singletons.get(d)) == null) {
-                    object = instantiate(d);
-                    singletons.put(d, object);
+                    $CdiObject cdiObject = instantiate(d);
+                    singletons.put(d, cdiObject);
                     try {
-                        construct(object);
+                        cdiObject.$construct();
                     } catch (RuntimeException | Error e) {
                         singletons.remove(d);
                         throw e;
                     }
+                    return cdiObject;
                 }
             } finally {
                 rwLock.writeLock().unlock();
@@ -77,58 +58,63 @@ final class ContextImpl implements $Context {
     }
 
     private final ThreadLocal<Map<$Descriptor, Object>> dejaVu = ThreadLocal.withInitial(HashMap::new);
-    private Object lookupStateless($Descriptor d) {
+    @Override public Object $stateless($Descriptor d) {
         Map<$Descriptor, Object> dejaVu = this.dejaVu.get();
         Object object = dejaVu.get(d);
         if (object == null) {
-            object = instantiate(d);
-            dejaVu.put(d, object);
+            $CdiObject cdiObject = instantiate(d);
+            dejaVu.put(d, cdiObject);
             try {
-                construct(object);
+                cdiObject.$construct();
             } finally {
                 dejaVu.remove(d);
             }
+            return cdiObject;
         }
         return object;
     }
 
     @Override
-    public void startRequest() {}
-
-    @Override
-    public void finishRequest() {
+    public void cleanupThreadLocals() {
         requestScoped.get().clear();
     }
 
     private final ThreadLocal<Map<$Descriptor, Object>> requestScoped = ThreadLocal.withInitial(HashMap::new);
-    private Object lookupRequestScoped($Descriptor d) {
+    @Override public Object $request($Descriptor d) {
         Map<$Descriptor, Object> requestScoped = this.requestScoped.get();
         Object object = requestScoped.get(d);
         if (object == null) {
-            object = instantiate(d);
-            requestScoped.put(d, object);
-            construct(object);
+            $CdiObject cdiObject = instantiate(d);
+            requestScoped.put(d, cdiObject);
+            cdiObject.$construct();
+            return cdiObject;
         }
         return object;
     }
 
-    private void construct(Object object) {
-        if (object instanceof $CdiObject) {
-            (($CdiObject) object).$construct();
+    private static Object instantiate(Class clazz) {
+        try {
+            return clazz.newInstance();
+        } catch (InstantiationException ie) {
+            throw new ImpossibleError(ie);
+        } catch (IllegalAccessException iae) {
+            throw new CdiException(iae, ILLEGAL_ACCESS);
         }
     }
 
     private static final ConcurrentMap<Class, $Instantiator> instantiators = new ConcurrentHashMap<>();
-    private Object instantiate($Descriptor d) {
-        $Instantiator instantiator = instantiators.computeIfAbsent(getSubclass(d.c), c -> ($Instantiator) silent(() ->
-            c.getDeclaredField("$i").get(null)
-        ));
+    private $CdiObject instantiate($Descriptor d) {
+        $Instantiator instantiator = instantiators.computeIfAbsent(d.c, this::getInstantiator);
         return instantiator.$create(this, d.p);
     }
 
-    private Scope scope(Class<?> clazz) {
-        Scoped scoped = clazz.getAnnotation(Scoped.class);
-        return (scoped == null) ? null : scoped.value();
+    private $Instantiator getInstantiator(Class clazz) {
+        Class cdiImpl = getSubclass(clazz);
+        try {
+            return ($Instantiator) cdiImpl.getDeclaredField("$i").get(null);
+        } catch (Throwable t) {
+            throw new ImpossibleError(t);
+        }
     }
 
     private static void bind(Class sup, Class sub) {

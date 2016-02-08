@@ -2,29 +2,27 @@ package org.ibess.cdi;
 
 import org.ibess.cdi.annotations.Constructor;
 import org.ibess.cdi.annotations.Inject;
+import org.ibess.cdi.annotations.Provided;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
-import org.ibess.cdi.util.Lazy;
 import org.junit.Before;
-import org.junit.FixMethodOrder;
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.ibess.cdi.enums.Scope.SINGLETON;
 import static org.ibess.cdi.internal.$Descriptor.$;
 import static org.ibess.cdi.internal.$Descriptor.$0;
 import static org.junit.Assert.*;
-import static org.junit.runners.MethodSorters.NAME_ASCENDING;
 
 /**
  * @author ibessonov
  */
 @SuppressWarnings("unchecked")
-@FixMethodOrder(NAME_ASCENDING)
 public class ContextTest {
 
     private $Context context;
@@ -141,6 +139,22 @@ public class ContextTest {
         assertSame(String.class, holder.shitty.value.clazz);
     }
 
+    @Scoped static abstract class Lazy<T> implements Supplier<T> {
+
+        private T value;
+
+        @Override
+        public T get() {
+            T val = value;
+            if (val == null) {
+                val = value = init();
+            }
+            return val;
+        }
+
+        @Provided abstract T init();
+    }
+
     @Scoped static class WithLazy<T> {
         @Inject Lazy<T> lazy;
     }
@@ -150,23 +164,4 @@ public class ContextTest {
         WithLazy<Singleton> lazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
         assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
     }
-
-    @Test(timeout = 100)
-    public void zLookupPerformance() {
-        for (int i = 0; i < 5000; i++) {
-            context.$lookup($(GenericPair.class, $0(String.class), $0(List.class)));
-        }
-    }
-
-//    static class MyClass<T> {
-//
-//        void process(Class<T> c) { }
-//
-//        Class<? extends T> create() { return null; }
-//
-//        static void g() {
-//            MyClass<?> myClass = new MyClass<>();
-//            myClass.process(myClass.create());
-//        }
-//    }
 }

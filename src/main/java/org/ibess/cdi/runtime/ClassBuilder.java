@@ -1,4 +1,4 @@
-package org.ibess.cdi.reflection;
+package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.Context;
 import org.ibess.cdi.annotations.Scoped;
@@ -9,8 +9,8 @@ import org.objectweb.asm.MethodVisitor;
 import java.lang.reflect.*;
 import java.util.*;
 
-import static org.ibess.cdi.javac.CdiClassLoader.defineClass;
-import static org.ibess.cdi.reflection.ClassBuilderConstants.*;
+import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
+import static org.ibess.cdi.runtime.ClassBuilderConstants.*;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
 import static org.objectweb.asm.Opcodes.*;
@@ -20,7 +20,7 @@ import static org.objectweb.asm.Type.*;
  * @author ibessonov
  */
 //TODO separate "tree construction" from bytecode generation
-public class ClassBuilder {
+final class ClassBuilder {
 
     private final String internalName;
     private final String internalNameCdi;
@@ -353,21 +353,47 @@ public class ClassBuilder {
                 }
             }
 
+            Class<?> rawClass = null;
+            if (type instanceof Class) {
+                rawClass = (Class) type;
+            } else if (type instanceof ParameterizedType) {
+                rawClass = (Class) ((ParameterizedType) type).getRawType();
+            }
+
             mv.visitVarInsn(ALOAD, 0);
             mv.visitFieldInsn(GETFIELD, internalNameCdi, CONTEXT_F_NAME, CONTEXT_DESCR);
-            appendDescriptor(mv, type);
-            mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, LOOKUP_M_NAME, LOOKUP_M_DESCR, true);
+            if (rawClass == null) {
+                visitTypeVariable(mv, (TypeVariable) type);
+                mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, LOOKUP_M_NAME, LOOKUP_M_DESCR, true);
+            } else {
+                Scoped scoped = rawClass.getAnnotation(Scoped.class);
+                if (scoped == null) {
+                    mv.visitLdcInsn(getType(internalType(rawClass)));
+                    mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, UNSCOPED_M_NAME, UNSCOPED_M_DESCR, true);
+                } else {
+                    appendDescriptor(mv, type);
+                    switch (scoped.value()) {
+                        case SINGLETON:
+                            mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, SINGLETON_M_NAME, SINGLETON_M_DESCR, true);
+                            break;
+                        case STATELESS:
+                            mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, STATELESS_M_NAME, STATELESS_M_DESCR, true);
+                            break;
+                        case REQUEST:
+                            mv.visitMethodInsn(INVOKEINTERFACE, CONTEXT_INTERNAL, REQUEST_M_NAME, REQUEST_M_DESCR, true);
+                            break;
+                        default:
+                            throw new ImpossibleError();
+                    }
+                }
+            }
             String internalType = internalType(this.type);
             mv.visitTypeInsn(CHECKCAST, internalType.substring(1, internalType.length() - 1));
         }
 
         private void appendDescriptor(MethodVisitor mv, Type currentType) {
             if (currentType instanceof TypeVariable) {
-                mv.visitVarInsn(ALOAD, 0);
-                mv.visitFieldInsn(GETFIELD, internalNameCdi, DESCRIPTOR_F_NAME, DESCRIPTOR_A_DESCR);
-                int index = paramsIndex.get(currentType.getTypeName());
-                visitIntConst(mv, index);
-                mv.visitInsn(AALOAD);
+                visitTypeVariable(mv, (TypeVariable) currentType);
             } else {
                 if (currentType instanceof ParameterizedType) {
                     ParameterizedType parameterizedType = (ParameterizedType) currentType;
@@ -418,6 +444,14 @@ public class ClassBuilder {
                     throw new ImpossibleError();
                 }
             }
+        }
+
+        private void visitTypeVariable(MethodVisitor mv, TypeVariable currentType) {
+            mv.visitVarInsn(ALOAD, 0);
+            mv.visitFieldInsn(GETFIELD, internalNameCdi, DESCRIPTOR_F_NAME, DESCRIPTOR_A_DESCR);
+            int index = paramsIndex.get(currentType.getTypeName());
+            visitIntConst(mv, index);
+            mv.visitInsn(AALOAD);
         }
     }
 

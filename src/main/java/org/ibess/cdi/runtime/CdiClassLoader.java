@@ -1,4 +1,4 @@
-package org.ibess.cdi.javac;
+package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.exceptions.ImpossibleError;
 
@@ -12,7 +12,7 @@ import static java.security.AccessController.doPrivileged;
 /**
  * @author ibessonov
  */
-public final class CdiClassLoader {
+final class CdiClassLoader {
 
     private static final ClassLoader SYSTEM_CLASS_LOADER = getSystemClassLoader0();
 

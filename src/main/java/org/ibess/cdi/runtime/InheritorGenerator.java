@@ -1,4 +1,4 @@
-package org.ibess.cdi.reflection;
+package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.annotations.Constructor;
 import org.ibess.cdi.annotations.Inject;
@@ -6,7 +6,7 @@ import org.ibess.cdi.annotations.Provided;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
-import org.ibess.cdi.reflection.ClassBuilder.Expression;
+import org.ibess.cdi.runtime.ClassBuilder.Expression;
 
 import java.lang.reflect.*;
 import java.util.*;
@@ -14,7 +14,6 @@ import java.util.*;
 import static java.lang.reflect.Modifier.*;
 import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
-import static org.ibess.cdi.util.Cdi.isChecked;
 
 /**
  * @author ibessonov
@@ -167,7 +166,7 @@ public final class InheritorGenerator {
     private static void validateConstructor(ClassInfo ci, Method constructor) {
         Class[] exceptions = constructor.getExceptionTypes();
         for (Class exceptionClass : exceptions) {
-            if (!isChecked(exceptionClass)) {
+            if (!RuntimeException.class.isAssignableFrom(exceptionClass) && !Error.class.isAssignableFrom(exceptionClass)) {
                 throw new CdiException(CONSTRUCTOR_THROWS_EXCEPTION, ci.originalName, exceptionClass.getCanonicalName());
             }
         }
