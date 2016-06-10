@@ -46,21 +46,24 @@ public final class $Descriptor {
     }
 
     // hashCode method without null checks
-    private static int hashCode(Object a[]) {
+    private static int hashCode($Descriptor p[]) {
         int result = 1;
-        for (Object element : a) {
-            result = 31 * result + element.hashCode();
+        for ($Descriptor d : p) {
+            result = 31 * result + d.h;
         }
         return result;
     }
 
     // equals method without null checks
-    private static boolean equals(Object[] l, Object[] r) {
+    private static boolean equals($Descriptor[] l, $Descriptor[] r) {
         if (l == r) return true;
         int length = l.length;
         if (r.length != length) return false;
         for (int i = 0; i < length; i++) {
-            if (!l[i].equals(r[i])) return false;
+            if (l[i].h != r[i].h || l[i].c != r[i].c) return false;
+        }
+        for (int i = 0; i < length; i++) {
+            if (!equals(l[i].p, r[i].p)) return false;
         }
         return true;
     }

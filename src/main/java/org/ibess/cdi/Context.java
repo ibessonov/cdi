@@ -7,9 +7,7 @@ public interface Context {
 
     <T> T lookup(Class<T> clazz);
 
-    void cleanupThreadLocals();
-
-    static Context create() {
+    static Context createContext() {
         return new ContextImpl();
     }
 }

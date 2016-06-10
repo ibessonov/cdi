@@ -24,8 +24,6 @@ public interface $Context extends Context {
                 return $singleton(d);
             case STATELESS:
                 return $stateless(d);
-            case REQUEST:
-                return $request(d);
             default: throw new ImpossibleError();
         }
     }
@@ -33,7 +31,6 @@ public interface $Context extends Context {
     Object $unscoped(Class c);
     Object $singleton($Descriptor d);
     Object $stateless($Descriptor d);
-    Object $request($Descriptor d);
 
     /**
      * {@inheritDoc}
@@ -53,8 +50,6 @@ public interface $Context extends Context {
                 return clazz.cast($singleton($0(clazz)));
             case STATELESS:
                 return clazz.cast($stateless($0(clazz)));
-            case REQUEST:
-                return clazz.cast($request($0(clazz)));
             default: throw new ImpossibleError();
         }
     }

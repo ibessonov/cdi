@@ -74,24 +74,6 @@ final class ContextImpl implements $Context {
         return object;
     }
 
-    @Override
-    public void cleanupThreadLocals() {
-        requestScoped.get().clear();
-    }
-
-    private final ThreadLocal<Map<$Descriptor, Object>> requestScoped = ThreadLocal.withInitial(HashMap::new);
-    @Override public Object $request($Descriptor d) {
-        Map<$Descriptor, Object> requestScoped = this.requestScoped.get();
-        Object object = requestScoped.get(d);
-        if (object == null) {
-            $CdiObject cdiObject = instantiate(d);
-            requestScoped.put(d, cdiObject);
-            cdiObject.$construct();
-            return cdiObject;
-        }
-        return object;
-    }
-
     private static Object instantiate(Class clazz) {
         try {
             return clazz.newInstance();
@@ -104,8 +86,7 @@ final class ContextImpl implements $Context {
 
     private static final ConcurrentMap<Class, $Instantiator> instantiators = new ConcurrentHashMap<>();
     private $CdiObject instantiate($Descriptor d) {
-        $Instantiator instantiator = instantiators.computeIfAbsent(d.c, this::getInstantiator);
-        return instantiator.$create(this, d.p);
+        return instantiators.computeIfAbsent(d.c, this::getInstantiator).$create(this, d.p);
     }
 
     private $Instantiator getInstantiator(Class clazz) {
@@ -125,7 +106,9 @@ final class ContextImpl implements $Context {
         bind(Context.class, ContextImpl.class);
         bind(List.class, ArrayList.class);
         bind(Map.class, HashMap.class);
+        bind(Set.class, HashSet.class);
         bind(SortedMap.class, TreeMap.class);
+        bind(SortedSet.class, TreeSet.class);
         bind(ConcurrentMap.class, ConcurrentHashMap.class);
     }
 }

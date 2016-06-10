@@ -1,12 +1,16 @@
 package org.ibess.cdi.runtime;
 
+import org.ibess.cdi.Context;
 import org.ibess.cdi.annotations.Constructor;
 import org.ibess.cdi.annotations.Inject;
-import org.ibess.cdi.annotations.Provided;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
-import org.ibess.cdi.runtime.ClassBuilder.Expression;
+import org.ibess.cdi.internal.$CdiObject;
+import org.ibess.cdi.internal.$Context;
+import org.ibess.cdi.internal.$Descriptor;
+import org.ibess.cdi.internal.$Instantiator;
+import org.ibess.cdi.runtime.st.*;
 
 import java.lang.reflect.*;
 import java.util.*;
@@ -14,19 +18,49 @@ import java.util.*;
 import static java.lang.reflect.Modifier.*;
 import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
+import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
+import static org.ibess.cdi.runtime.StCompiler.compile;
+import static org.ibess.cdi.runtime.st.Dsl.*;
 
 /**
  * @author ibessonov
  */
 public final class InheritorGenerator {
 
+    private static final String CDI_SUFFIX = "$Cdi";
+    private static final String I_SUFFIX   = "$I";
+
     private static final Map<Class, ClassInfo> cache = new HashMap<>();
+
+    private static final Method $lookup;
+    private static final Method $unscoped;
+    private static final Method $stateless;
+    private static final Method $singleton;
+
+    private static final Method $;
+    private static final Method $0;
+
+    static {
+        try {
+            $lookup    = $Context.class.getDeclaredMethod("$lookup",    $Descriptor.class);
+            $unscoped  = $Context.class.getDeclaredMethod("$unscoped",  Class.class);
+            $stateless = $Context.class.getDeclaredMethod("$stateless", $Descriptor.class);
+            $singleton = $Context.class.getDeclaredMethod("$singleton", $Descriptor.class);
+
+            $  = $Descriptor.class.getDeclaredMethod("$",  Class.class, $Descriptor[].class);
+            $0 = $Descriptor.class.getDeclaredMethod("$0", Class.class);
+        } catch (NoSuchMethodException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     public static Class getSubclass(Class clazz) {
         ClassInfo ci = cache.get(clazz);
         if (ci == null || ci.compiledClass == null) {
             synchronized (InheritorGenerator.class) {
-                ci = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
+                if (ci == null) {
+                    ci = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
+                }
                 if (ci.compiledClass == null) {
                     compileWithDependencies(ci, new HashSet<>());
                 }
@@ -55,16 +89,211 @@ public final class InheritorGenerator {
         for (Field field : ci.declaredFields) {
             if (injectable(field)) {
                 validateFieldForInjection(ci, field);
-                appendFieldConstruction(ci, field);
             }
         }
-        appendConstructorInvocation(ci);
+        validateConstructor(ci);
 
-        for (Method method : ci.declaredMethods) {
-            if (isAbstract(method.getModifiers())) implementMethod(ci, method);
+//        concat(of(ci.methods), of(ci.declaredMethods)).distinct().forEach(method -> {
+//            if (isAbstract(method.getModifiers())) implementMethod(ci, method);
+//        });
+
+        String inheritorClassName = clazz.getName() + CDI_SUFFIX;
+        String instantiatorClassName = inheritorClassName + "$" + I_SUFFIX;
+
+        ci.stClasses.add($class($named(instantiatorClassName), $extends(Object.class), $implements($Instantiator.class),
+            $withoutFields(), $withMethods(
+                $method($named("<init>"), $withoutParameterTypes(), $returnsNothing(), $withBody(
+                    $invoke($invokeSpecialMethod($ofClass(Object.class), $named("<init>"),
+                        $withoutParameterTypes(), $returnsNothing(),
+                        $on($this()), $withoutParameters()
+                    ))
+                )),
+                $method($named("$create"), $withParameterTypes($Context.class, $Descriptor[].class), $returns($CdiObject.class), $withBody(
+                    $return($invokeSpecialMethod($ofClass(inheritorClassName), $named("<init>"),
+                        $withParameterTypes($Context.class, $Descriptor[].class), $returnsNothing(),
+                        $on($dup($new(inheritorClassName))),
+                        $withParameters($methodParam(0), $methodParam(1))
+                    ))
+                ))
+            )
+        ));
+
+        List<StField> fields = new ArrayList<>(3);
+        fields.add($staticField($named("$i"), $withType($Instantiator.class)));
+        if (ci.hasContext) {
+            fields.add($field($named("$c"), $withType($Context.class)));
+        }
+        if (ci.hasDescriptors) {
+            fields.add($field($named("$d"), $withType($Descriptor[].class)));
         }
 
+        List<StMethod> methods = new ArrayList<>();
+        methods.add($method($named("<init>"), $withParameterTypes($Context.class, $Descriptor[].class), $returnsNothing(), $withBody(
+            $invoke($invokeSpecialMethod($ofClass(clazz), $named("<init>"),
+                $withoutParameterTypes(), $returnsNothing(),
+                $on($this()), $withoutParameters()
+            )),
+            !ci.hasContext ? $noop()
+                : $assignMyField($named("$c"), $withType($Context.class), $value($methodParam(0))),
+            !ci.hasDescriptors ? $noop()
+                : $assignMyField($named("$d"), $withType($Descriptor[].class), $value($methodParam(1)))
+        )));
+
+        methods.add($staticMethod($named("<clinit>"), $withoutParameterTypes(), $returnsNothing(), $withBody(
+            $assignStatic($named("$i"), $ofClass(inheritorClassName), $withType($Instantiator.class), $value(
+                $invokeSpecialMethod($ofClass(instantiatorClassName), $named("<init>"),
+                    $withoutParameterTypes(), $returnsNothing(),
+                    $on($dup($new(instantiatorClassName))),
+                    $withoutParameters()
+                )
+            ))
+        )));
+
+        methods.add($method($named("$construct"), $withoutParameterTypes(), $returnsNothing(),
+            $withBody(getConstructorBody(ci))
+        ));
+
+        ci.stClasses.add($class($named(inheritorClassName), $extends(clazz), $implements($CdiObject.class),
+            $withFields($fields(fields)), $withMethods($methods(methods))
+        ));
+
         return ci;
+    }
+
+    private static StStatement[] getConstructorBody(ClassInfo ci) {
+        List<StStatement> statements = new ArrayList<>();
+        for (Field field : ci.declaredFields) {
+            if (injectable(field)) {
+                statements.add($assign(field, $of($this()), $value(getLookupExpression(ci, field.getGenericType()))));
+            }
+        }
+        Method constructor = ci.constructor;
+        if (constructor != null) {
+            int parameterCount = constructor.getParameterCount();
+
+            Type[] parameterTypes = constructor.getGenericParameterTypes();
+            StExpression[] params = new StExpression[parameterCount];
+            for (int i = 0; i < parameterCount; i++) {
+                params[i] = getLookupExpression(ci, parameterTypes[i]);
+            }
+
+            statements.add($invoke($invokeVirtualMethod(constructor, $on($this()), $withParameters(params))));
+        }
+
+        return statements(statements);
+    }
+
+    private static StExpression getLookupExpression(ClassInfo ci, Type type) {
+        if (type == Context.class) {
+            return $myField($named("$c"), $withType($Context.class));
+        }
+        if (type instanceof ParameterizedType) {
+            ParameterizedType parameterizedType = (ParameterizedType) type;
+            Class clazz = (Class) parameterizedType.getRawType();
+            if (clazz == Class.class) {
+                Type actualTypeArgument = parameterizedType.getActualTypeArguments()[0];
+                TypeVariable actualTypeVariable = (TypeVariable) actualTypeArgument;
+
+                return $getField($ofClass($Descriptor.class), $named("c"), $withType(Class.class),
+                                 $of(getTypeVariableDescriptor(ci, actualTypeVariable))
+                );
+            }
+        }
+
+        Class<?> rawClass = null;
+        if (type instanceof Class) {
+            rawClass = (Class) type;
+        } else if (type instanceof ParameterizedType) {
+            rawClass = (Class) ((ParameterizedType) type).getRawType();
+        }
+
+        StExpression context = $myField($named("$c"), $withType($Context.class));
+        Method method;
+        StExpression param;
+        if (rawClass == null) {
+            method = $lookup;
+            param = getTypeVariableDescriptor(ci, (TypeVariable) type);
+            rawClass = Object.class;
+        } else {
+            Scoped scoped = rawClass.getAnnotation(Scoped.class);
+            if (scoped == null) {
+                method = $unscoped;
+                param = $class(rawClass);
+            } else {
+                switch (scoped.value()) {
+                    case SINGLETON:
+                        method = $singleton;
+                        break;
+                    case STATELESS:
+                        method = $stateless;
+                        break;
+                    default:
+                        throw new ImpossibleError();
+                }
+                param = getDescriptor(ci, type);
+            }
+        }
+
+        return param instanceof StClassExpression // do not cast class object
+             ? $invokeInterfaceMethod(method, $on(context), $withParameters(param))
+             : $cast($toClass(rawClass), $invokeInterfaceMethod(method, $on(context), $withParameters(param)));
+    }
+
+    private static StExpression getTypeVariableDescriptor(ClassInfo ci, TypeVariable type) {
+        return $arrayElement($of($myField($named("$d"), $withType($Descriptor[].class))),
+                             $withIndex($int(ci.paramsIndex.get(type.getTypeName())))
+        );
+    }
+
+    private static StExpression getDescriptor(ClassInfo ci, Type type) {
+        if (type instanceof TypeVariable) {
+            return getTypeVariableDescriptor(ci, (TypeVariable) type);
+        } else {
+            List<StExpression> params = new ArrayList<>(2);
+            Method method;
+            if (type instanceof ParameterizedType) {
+                ParameterizedType parameterizedType = (ParameterizedType) type;
+                Class clazz = (Class) parameterizedType.getRawType();
+
+                params.add($class(clazz));
+                if (clazz.isAnnotationPresent(Scoped.class)) {
+                    Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
+                    if (actualTypeArguments.length == 0) {
+                        method = $0;
+                    } else {
+                        boolean optimize = true;
+                        for (int i = 0, length = actualTypeArguments.length; i < length; i++) {
+                            Type actualTypeArgument = actualTypeArguments[i];
+                            boolean matches = (actualTypeArgument instanceof TypeVariable)
+                                    && (i == ci.paramsIndex.get(actualTypeArgument.getTypeName()));
+                            if (!matches) {
+                                optimize = false;
+                                break;
+                            }
+                        }
+
+                        if (optimize) {
+                            params.add($myField($named("$d"), $withType($Descriptor[].class)));
+                        } else {
+                            StExpression[] elements = new StExpression[actualTypeArguments.length];
+                            for (int i = 0, length = actualTypeArguments.length; i < length; i++) {
+                                elements[i] = getDescriptor(ci, actualTypeArguments[i]);
+                            }
+                            params.add($array($Descriptor.class, elements));
+                        }
+                        method = $;
+                    }
+                } else {
+                    method = $0;
+                }
+            } else if (type instanceof Class) {
+                params.add($class((Class) type));
+                method = $0;
+            } else {
+                throw new ImpossibleError();
+            }
+            return $invokeStaticMethod(method, $expressions(params));
+        }
     }
 
     private static void compileWithDependencies(ClassInfo ci, Set<ClassInfo> dejaVu) {
@@ -76,19 +305,16 @@ public final class InheritorGenerator {
             ClassInfo info = cache.computeIfAbsent(clazz, InheritorGenerator::getClassInfo);
             compileWithDependencies(info, dejaVu);
         }
+        dejaVu.remove(ci);
 
-        ci.compiledClass = ci.builder.define();
-        ci.dependsOn = null;
-        ci.builder = null;
+        for (StClass stClass : ci.stClasses) {
+            ci.compiledClass = defineClass(compile(stClass));
+        }
+
+        ci.dispose();
     }
 
-    private static void appendFieldConstruction(ClassInfo ci, Field field) {
-        ci.builder.getConstructMethod().addStatement(ci.builder.newAssignmentStatement(
-                field, ci.builder.newLookupExpression(field.getGenericType())
-        ));
-    }
-
-    private static void appendConstructorInvocation(ClassInfo ci) {
+    private static void validateConstructor(ClassInfo ci) {
         Method constructor = null;
         for (Method method : ci.declaredMethods) {
             if (method.isAnnotationPresent(Constructor.class)) {
@@ -99,30 +325,12 @@ public final class InheritorGenerator {
             }
         }
         if (constructor == null) return;
+        ci.constructor = constructor;
 
         validateConstructor(ci, constructor);
-        int parameterCount = constructor.getParameterCount();
-
-        Type[] parameterTypes = constructor.getGenericParameterTypes();
-        List<Expression> params = new ArrayList<>(parameterCount);
-
-        for (int i = 0; i < parameterCount; i++) {
-            validateLookup(ci, parameterTypes[i]);
-            params.add(ci.builder.newLookupExpression(parameterTypes[i]));
+        for (Type parameterType : constructor.getGenericParameterTypes()) {
+            validateLookup(ci, parameterType);
         }
-        Expression self = ci.builder.newThisExpression();
-        ci.builder.getConstructMethod().addStatement(ci.builder.newMethodCallStatement(constructor, self, params));
-    }
-
-    private static void implementMethod(ClassInfo ci, Method method) {
-        if (!implementable(method)) {
-            throw new CdiException(UNIMPLEMENTABLE_ABSTRACT_METHOD, ci.originalName, method.getName());
-        }
-
-        validateLookup(ci, method.getGenericReturnType());
-
-        ClassBuilder.MethodInfo newMethod = ci.builder.createNewMethod(method.getName(), method.getReturnType());
-        newMethod.addStatement(ci.builder.newReturnStatement(ci.builder.newLookupExpression(method.getGenericReturnType())));
     }
 
     private static void validateLookup(ClassInfo ci, Type type) {
@@ -137,10 +345,12 @@ public final class InheritorGenerator {
                 if (!(actualTypeArgument instanceof TypeVariable)) {
                     throw new CdiException(CLASS_INJECTION, ci.originalName, type.getTypeName());
                 }
+                ci.hasDescriptors = true;
                 return;
             }
         }
 
+        ci.hasContext = true;
         validateType(ci, type);
     }
 
@@ -156,11 +366,6 @@ public final class InheritorGenerator {
             throw new CdiException(FINAL_FIELD_INJECTION, ci.originalName, field.getName());
         }
         validateLookup(ci, field.getGenericType());
-    }
-
-    private static boolean implementable(Method method) {
-        return method.getTypeParameters().length == 0 && method.getParameterCount() == 0
-                && !method.getReturnType().isPrimitive() && method.isAnnotationPresent(Provided.class); // " lookupable" return type
     }
 
     private static void validateConstructor(ClassInfo ci, Method constructor) {
@@ -200,7 +405,8 @@ public final class InheritorGenerator {
                 }
                 ci.dependsOn.add(clazz);
             }
-//        } else if (type instanceof TypeVariable) {
+        } else if (type instanceof TypeVariable) {
+            ci.hasDescriptors = true;
             // remember it for future checks
 //            TypeVariable typeVariable = (TypeVariable) type;
 //            int index = ci.paramsIndex.get(typeVariable.getName());
@@ -213,22 +419,39 @@ public final class InheritorGenerator {
 
     public static class ClassInfo {
 
-        public final String               originalName;
-        public final Field[]              declaredFields;
-        public final Method[]             declaredMethods;
+        public final String originalName;
 
-        public ClassBuilder builder;
-
-        public Class compiledClass = null;
+        public Field[] declaredFields;
+        public Method[] declaredMethods;
+        public Method[] methods;
+        public Map<String, Integer> paramsIndex = new HashMap<>();
         public Set<Class> dependsOn = new HashSet<>();
+        public Class compiledClass = null;
+        public Method constructor = null;
+        public boolean hasContext = false;
+        public boolean hasDescriptors = false;
+        public List<StClass> stClasses = new ArrayList<>();
 
         public ClassInfo(Class clazz) {
-            this.originalName   = clazz.getCanonicalName();
-
-            this.declaredFields  = clazz.getDeclaredFields();
+            this.originalName = clazz.getCanonicalName();
+            this.declaredFields = clazz.getDeclaredFields();
             this.declaredMethods = clazz.getDeclaredMethods();
+            this.methods = clazz.getMethods();
 
-            builder = new ClassBuilder(clazz);
+            TypeVariable[] params = clazz.getTypeParameters();
+            for (int i = 0; i < params.length; i++) {
+                this.paramsIndex.put(params[i].getName(), i);
+            }
+        }
+
+        public void dispose() {
+            declaredFields = null;
+            declaredMethods = null;
+            methods = null;
+            paramsIndex = null;
+            dependsOn = null;
+            constructor = null;
+            stClasses = null;
         }
     }
 

@@ -2,7 +2,6 @@ package org.ibess.cdi;
 
 import org.ibess.cdi.annotations.Constructor;
 import org.ibess.cdi.annotations.Inject;
-import org.ibess.cdi.annotations.Provided;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
@@ -12,7 +11,6 @@ import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.function.Supplier;
 
 import static org.ibess.cdi.enums.Scope.SINGLETON;
 import static org.ibess.cdi.internal.$Descriptor.$;
@@ -139,29 +137,29 @@ public class ContextTest {
         assertSame(String.class, holder.shitty.value.clazz);
     }
 
-    @Scoped static abstract class Lazy<T> implements Supplier<T> {
-
-        private T value;
-
-        @Override
-        public T get() {
-            T val = value;
-            if (val == null) {
-                val = value = init();
-            }
-            return val;
-        }
-
-        @Provided abstract T init();
-    }
-
-    @Scoped static class WithLazy<T> {
-        @Inject Lazy<T> lazy;
-    }
-
-    @Test
-    public void lazy() {
-        WithLazy<Singleton> lazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
-        assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
-    }
+//    @Scoped static abstract class Lazy<T> implements Supplier<T> {
+//
+//        private T value;
+//
+//        @Override
+//        public T get() {
+//            T val = value;
+//            if (val == null) {
+//                val = value = init();
+//            }
+//            return val;
+//        }
+//
+//        abstract T init();
+//    }
+//
+//    @Scoped static class WithLazy<T> {
+//        @Inject Lazy<T> lazy;
+//    }
+//
+//    @Test
+//    public void lazy() {
+//        WithLazy<Singleton> lazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
+//        assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
+//    }
 }
