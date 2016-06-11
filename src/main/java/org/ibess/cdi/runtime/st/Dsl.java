@@ -95,20 +95,33 @@ public class Dsl {
     }
 
     public static StStatement $assignMyField(String name, Class<?> type, StExpression value) {
-        return new StFieldAssignmentStatement($this(), null, type, name, value);
+        return new StFieldAssignmentStatement($this(), false, null, type, name, value);
+    }
+
+    public static StStatement $assign(String name, String declaringClassName, Class<?> fieldClass, StExpression value) {
+        return new StFieldAssignmentStatement(null, false, declaringClassName, fieldClass, name, value);
     }
 
     public static StStatement $assignStatic(String name, String declaringClassName, Class<?> fieldClass, StExpression value) {
-        return new StFieldAssignmentStatement(true, null, declaringClassName, fieldClass, name, value);
+        return new StFieldAssignmentStatement(null, true, declaringClassName, fieldClass, name, value);
     }
 
     public static StStatement $noop() {
         return new StNoopStatement();
     }
 
+
+    public static StStatement $assignMethodParam(int index, StExpression expression) {
+        return new StParamAssignmentStatement(index, expression);
+    }
+
     public static StMethodCallExpression $invokeSpecialMethod(String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression left, StExpression[] parameters) {
         return $invokeMethod(InvokeType.SPECIAL, declaringClassName, name, parameterTypes, returnType, left, parameters);
+    }
+
+    public static StMethodCallExpression $invokeSpecialMethod(Method method, StExpression left, StExpression[] parameters) {
+        return $invokeMethod(InvokeType.SPECIAL, method, left, parameters);
     }
 
     public static StMethodCallExpression $invokeVirtualMethod(String declaringClassName, String name,
@@ -200,8 +213,13 @@ public class Dsl {
     public static StExpression $myField(String name, Class<?> type) {
         return $getField(null, name, type, $this());
     }
+
+    public static StExpression $myStaticField(String name, Class<?> type) {
+        return new StGetFieldExpression($this(), true, null, type, name);
+    }
+
     public static StExpression $getField(String declaringClassName, String name, Class<?> type, StExpression expression) {
-        return new StGetFieldExpression(expression, declaringClassName, type, name);
+        return new StGetFieldExpression(expression, false, declaringClassName, type, name);
     }
 
     public static Class<?> $withType(Class<?> clazz) {
@@ -237,7 +255,7 @@ public class Dsl {
         return methods.toArray(new StMethod[0]);
     }
 
-    public static StStatement[] statements(List<StStatement> statements) {
+    public static StStatement[] $statements(List<StStatement> statements) {
         return statements.toArray(new StStatement[0]);
     }
 

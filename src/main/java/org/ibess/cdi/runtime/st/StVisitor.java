@@ -44,4 +44,6 @@ public interface StVisitor {
     void visitNewExpression(StNewExpression newExpression);
 
     void visitNoopStatement(StNoopStatement noopStatement);
+
+    void visitParamAssignmentStatement(StParamAssignmentStatement paramAssignmentStatement);
 }

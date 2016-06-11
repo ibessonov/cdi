@@ -6,15 +6,11 @@ package org.ibess.cdi.runtime.st;
 public class StGetFieldExpression implements StExpression {
 
     public final StExpression left;
-    public final String declaringClassName;
-    public final Class<?> fieldClass;
-    public final String fieldName;
+    public final FieldInfo field;
 
-    public StGetFieldExpression(StExpression left, String declaringClassName, Class<?> fieldClass, String fieldName) {
+    public StGetFieldExpression(StExpression left, boolean isStatic, String declaringClassName, Class<?> fieldClass, String fieldName) {
         this.left = left;
-        this.declaringClassName = declaringClassName;
-        this.fieldClass = fieldClass;
-        this.fieldName = fieldName;
+        this.field = new FieldInfo(isStatic, declaringClassName, fieldClass.getName(), fieldName);
     }
 
     @Override

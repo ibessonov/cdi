@@ -12,6 +12,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  */
 @Target({PARAMETER, METHOD})
 @Retention(RUNTIME)
-public @interface NotNull {
-    String value() default "";
+public @interface Trimmed {
 }

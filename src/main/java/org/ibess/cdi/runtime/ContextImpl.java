@@ -1,5 +1,9 @@
-package org.ibess.cdi;
+package org.ibess.cdi.runtime;
 
+import org.ibess.cdi.Context;
+import org.ibess.cdi.Extension;
+import org.ibess.cdi.Registrar;
+import org.ibess.cdi.Transformer;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
 import org.ibess.cdi.internal.$CdiObject;
@@ -7,21 +11,63 @@ import org.ibess.cdi.internal.$Context;
 import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.internal.$Instantiator;
 
+import java.lang.annotation.Annotation;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.ibess.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
-import static org.ibess.cdi.runtime.InheritorGenerator.getSubclass;
 
 /**
  * @author ibessonov
  */
-final class ContextImpl implements $Context {
+public final class ContextImpl implements $Context {
 
     private static final Map<Class, Class> defaults = new HashMap<>();
+    private static final AtomicInteger counter = new AtomicInteger();
+
+    private final Map<Class, ArrayList<Transformer>> transformers = new HashMap<>();
+    private final InheritorGenerator generator = new InheritorGenerator(this, Integer.toString(counter.getAndIncrement()));
+
+    public ContextImpl(Extension... extensions) {
+        if (extensions.length != 0) {
+            Registrar registrar = new RegistrarImpl();
+            for (Extension extension : extensions) {
+                extension.register(registrar);
+            }
+            for (ArrayList<Transformer> list : transformers.values()) {
+                list.trimToSize(); // reduce memory consumption
+            }
+        }
+    }
+
+    private class RegistrarImpl implements Registrar {
+
+        @Override
+        public <T extends Annotation> void registerTransformer(Class<T> clazz, Transformer<T> transformer) {
+            transformers.computeIfAbsent(clazz, c -> new ArrayList<>()).add(transformer);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public Transformer getTransformer(Class clazz) {
+        ArrayList<Transformer> list = this.transformers.get(clazz);
+        if (list == null) return null;
+        return (object, annotation) -> {
+            for (int i = 0, len = list.size(); i < len; i++) {
+                object = list.get(i).transform(object, annotation);
+            }
+            return object;
+        };
+    }
+
+    public boolean transformerRegistered(Class clazz) {
+        return transformers.containsKey(clazz);
+    }
+
     @Override public Object $unscoped(Class clazz) {
         if (clazz.isInterface()) {
             clazz = defaults.get(clazz);
@@ -90,7 +136,7 @@ final class ContextImpl implements $Context {
     }
 
     private $Instantiator getInstantiator(Class clazz) {
-        Class cdiImpl = getSubclass(clazz);
+        Class cdiImpl = generator.getSubclass(clazz);
         try {
             return ($Instantiator) cdiImpl.getDeclaredField("$i").get(null);
         } catch (Throwable t) {

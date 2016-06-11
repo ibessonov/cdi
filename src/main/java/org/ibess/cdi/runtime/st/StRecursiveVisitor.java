@@ -43,6 +43,11 @@ public class StRecursiveVisitor implements StVisitor {
     }
 
     @Override
+    public void visitParamAssignmentStatement(StParamAssignmentStatement paramAssignmentStatement) {
+        paramAssignmentStatement.expression.accept(this);
+    }
+
+    @Override
     public void visitNullExpression(StNullExpression nullExpression) {
     }
 

@@ -1,11 +1,10 @@
 package org.ibess.cdi;
 
-import org.ibess.cdi.annotations.Constructor;
-import org.ibess.cdi.annotations.Inject;
-import org.ibess.cdi.annotations.Scoped;
+import org.ibess.cdi.annotations.*;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
+import org.ibess.cdi.runtime.ContextImpl;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -27,7 +26,25 @@ public class ContextTest {
 
     @Before
     public void setUp() {
-        context = new ContextImpl();
+        context = new ContextImpl(new TestExtension());
+    }
+
+    private static class TestExtension implements Extension {
+
+        @Override
+        public void register(Registrar registrar) {
+            registrar.registerTransformer(NotNull.class, (object, annotation) -> {
+                if (object == null) throw new NullPointerException(annotation.value());
+                return object;
+            });
+            registrar.registerTransformer(Trimmed.class, (object, annotation) -> {
+                if (object instanceof String) {
+                    return object.toString().trim();
+                } else {
+                    throw new IllegalArgumentException(object.getClass().getName());
+                }
+            });
+        }
     }
 
     @Scoped(SINGLETON) static class Singleton {
@@ -162,4 +179,26 @@ public class ContextTest {
 //        WithLazy<Singleton> lazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
 //        assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
 //    }
+
+    @Scoped static class Transformers {
+        void notNull(@NotNull("passed object is null") Object object) {}
+        @Trimmed String trimmed() { return "   str   "; }
+    }
+
+    @Test
+    public void testNotNull() {
+        Transformers transformers = (Transformers) context.$lookup($0(Transformers.class));
+        try {
+            transformers.notNull(null);
+            fail("NPE expected");
+        } catch (NullPointerException npe) {
+            assertEquals("passed object is null", npe.getMessage());
+        }
+    }
+
+    @Test
+    public void testTrimmed() {
+        Transformers transformers = (Transformers) context.$lookup($0(Transformers.class));
+        assertEquals("str", transformers.trimmed());
+    }
 }

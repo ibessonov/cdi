@@ -39,12 +39,20 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitClass(StClass clazz) {
-        String superClassInternalName = getInternalName(clazz.superClass);
+        Class<?> superClass = clazz.superClass;
+        boolean isInterface = superClass.isInterface();
+        if (isInterface) {
+            superClass = Object.class;
+        }
+        String superClassInternalName = getInternalName(superClass);
         internalClassName = internal(clazz.name);
         List<Class<?>> interfaces = clazz.interfaces;
-        String[] interfacesInternalNames = new String[interfaces.size()];
+        String[] interfacesInternalNames = new String[interfaces.size() + (isInterface ? 1 : 0)];
         for (int i = 0, size = interfaces.size(); i < size; i++) {
             interfacesInternalNames[i] = getInternalName(interfaces.get(i));
+        }
+        if (isInterface) {
+            interfacesInternalNames[interfaces.size()] = getInternalName(clazz.superClass);
         }
 
         cw.visit(CLASS_VERSION, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalClassName, null,
@@ -59,7 +67,7 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitField(StField field) {
-        int modifiers = field.isStatic ? ACC_PUBLIC | ACC_STATIC | ACC_FINAL : ACC_PRIVATE | ACC_FINAL;
+        int modifiers = field.isStatic ? ACC_PUBLIC | ACC_STATIC : ACC_PRIVATE | ACC_FINAL;
         cw.visitField(modifiers, field.name, getDescriptor(field.type), null, null).visitEnd();
     }
 
@@ -100,17 +108,23 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitFieldAssignmentStatement(StFieldAssignmentStatement fieldAssignmentStatement) {
-        if (!fieldAssignmentStatement.isStatic) {
+        FieldInfo field = fieldAssignmentStatement.field;
+        if (!field.isStatic) {
             fieldAssignmentStatement.left.accept(this);
         }
         fieldAssignmentStatement.right.accept(this);
-        String internalClassName = fieldAssignmentStatement.declaringClassName == null
+        String internalClassName = field.declaringClassName == null
                                  ? this.internalClassName
-                                 : internal(fieldAssignmentStatement.declaringClassName);
-        mv.visitFieldInsn(fieldAssignmentStatement.isStatic ? PUTSTATIC : PUTFIELD, internalClassName,
-                          fieldAssignmentStatement.fieldName,
-                          descriptor(fieldAssignmentStatement.fieldClassName)
+                                 : internal(field.declaringClassName);
+        mv.visitFieldInsn(field.isStatic ? PUTSTATIC : PUTFIELD, internalClassName,
+                          field.name, descriptor(field.className)
         );
+    }
+
+    @Override
+    public void visitParamAssignmentStatement(StParamAssignmentStatement paramAssignmentStatement) {
+        paramAssignmentStatement.expression.accept(this);
+        mv.visitVarInsn(ASTORE, paramAssignmentStatement.index + 1); // Object only
     }
 
     @Override
@@ -125,13 +139,15 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitGetFieldExpression(StGetFieldExpression getFieldExpression) {
-        getFieldExpression.left.accept(this);
-        String internalClassName = getFieldExpression.declaringClassName == null
+        FieldInfo field = getFieldExpression.field;
+        if (!field.isStatic) {
+            getFieldExpression.left.accept(this);
+        }
+        String internalClassName = field.declaringClassName == null
                                  ? this.internalClassName
-                                 : internal(getFieldExpression.declaringClassName);
-        mv.visitFieldInsn(GETFIELD, internalClassName,
-                          getFieldExpression.fieldName,
-                          getDescriptor(getFieldExpression.fieldClass)
+                                 : internal(field.declaringClassName);
+        mv.visitFieldInsn(field.isStatic ? GETSTATIC : GETFIELD, internalClassName,
+                          field.name, descriptor(field.className)
         );
     }
 
