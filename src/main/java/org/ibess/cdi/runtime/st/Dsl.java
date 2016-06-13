@@ -9,8 +9,13 @@ import java.util.*;
  */
 public class Dsl {
 
+    public static final StThisExpression $this = new StThisExpression();
+    public static final StSwapExpression $swap = new StSwapExpression();
+    public static final StNullExpression $null = new StNullExpression();
+    public static final StDupExpression $dup = new StDupExpression();
+
     public static StClass $class(String name, Class<?> superClass, Class<?>[] interfaces,
-                          StField[] fields, StMethod[] methods) {
+                                 StField[] fields, StMethod[] methods) {
         return new StClass(superClass, $list(interfaces), name, $list(fields), $list(methods));
     }
 
@@ -95,7 +100,7 @@ public class Dsl {
     }
 
     public static StStatement $assignMyField(String name, Class<?> type, StExpression value) {
-        return new StFieldAssignmentStatement($this(), false, null, type, name, value);
+        return new StFieldAssignmentStatement($this, false, null, type, name, value);
     }
 
     public static StStatement $assign(String name, String declaringClassName, Class<?> fieldClass, StExpression value) {
@@ -113,6 +118,10 @@ public class Dsl {
 
     public static StStatement $assignMethodParam(int index, StExpression expression) {
         return new StParamAssignmentStatement(index, expression);
+    }
+
+    public static StStatement $returnHook(StStatement statement, StStatement hook) {
+        return new StReturnHookStatement(statement, hook);
     }
 
     public static StMethodCallExpression $invokeSpecialMethod(String declaringClassName, String name,
@@ -135,6 +144,11 @@ public class Dsl {
 
     public static StMethodCallExpression $invokeInterfaceMethod(Method method, StExpression left, StExpression[] parameters) {
         return $invokeMethod(InvokeType.INTERFACE, method, left, parameters);
+    }
+
+    public static StMethodCallExpression $invokeStaticMethod(String declaringClassName, String name,
+              Class<?>[] parameterTypes, Class<?> returnType, StExpression[] parameters) {
+        return $invokeMethod(InvokeType.STATIC, declaringClassName, name, parameterTypes, returnType, null, parameters);
     }
 
     public static StMethodCallExpression $invokeStaticMethod(Method method, StExpression[] parameters) {
@@ -179,7 +193,7 @@ public class Dsl {
     }
 
     public static StExpression $this() {
-        return new StThisExpression();
+        return $this;
     }
 
     public static StExpression $methodParam(int index) {
@@ -194,12 +208,20 @@ public class Dsl {
         return new StNewExpression(className);
     }
 
-    public static StExpression $dup(StExpression expression) {
-        return new StDupExpression(expression);
+    public static StExpression $dup() {
+        return $dup;
     }
 
     public static StExpression $cast(Class<?> clazz, StExpression expression) {
         return new StCastExpression(clazz, expression);
+    }
+
+    public static StExpression $swap() {
+        return $swap;
+    }
+
+    public static StExpression $null() {
+        return $null;
     }
 
     public static Class<?> $toClass(Class<?> clazz) {
@@ -211,11 +233,11 @@ public class Dsl {
     }
 
     public static StExpression $myField(String name, Class<?> type) {
-        return $getField(null, name, type, $this());
+        return $getField(null, name, type, $this);
     }
 
     public static StExpression $myStaticField(String name, Class<?> type) {
-        return new StGetFieldExpression($this(), true, null, type, name);
+        return new StGetFieldExpression($this, true, null, type, name);
     }
 
     public static StExpression $getField(String declaringClassName, String name, Class<?> type, StExpression expression) {
@@ -243,7 +265,7 @@ public class Dsl {
     }
 
     @SafeVarargs @SuppressWarnings("unchecked")
-    public static <T, L extends List<T> & RandomAccess> L $list(T... array) {
+    private static <T, L extends List<T> & RandomAccess> L $list(T... array) {
         return (L) Arrays.asList(array);
     }
 

@@ -105,7 +105,6 @@ public class StRecursiveVisitor implements StVisitor {
 
     @Override
     public void visitDupExpression(StDupExpression dupExpression) {
-        dupExpression.expression.accept(this);
     }
 
     @Override
@@ -114,5 +113,15 @@ public class StRecursiveVisitor implements StVisitor {
 
     @Override
     public void visitNoopStatement(StNoopStatement noopStatement) {
+    }
+
+    @Override
+    public void visitSwapExpression(StSwapExpression swapExpression) {
+    }
+
+    @Override
+    public void visitReturnHookStatement(StReturnHookStatement returnHookStatement) {
+        returnHookStatement.statement.accept(this);
+        returnHookStatement.hook.accept(this);
     }
 }

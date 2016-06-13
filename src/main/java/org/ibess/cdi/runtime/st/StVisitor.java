@@ -46,4 +46,8 @@ public interface StVisitor {
     void visitNoopStatement(StNoopStatement noopStatement);
 
     void visitParamAssignmentStatement(StParamAssignmentStatement paramAssignmentStatement);
+
+    void visitReturnHookStatement(StReturnHookStatement returnHookStatement);
+
+    void visitSwapExpression(StSwapExpression swapExpression);
 }

@@ -2,9 +2,11 @@ package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.runtime.st.*;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
 
+import java.util.LinkedList;
 import java.util.List;
 
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
@@ -22,6 +24,7 @@ public class StCompiler implements StVisitor {
     private ClassWriter cw;
     private String internalClassName;
     private MethodVisitor mv;
+    private List<Label> hooks = new LinkedList<>();
 
     public static byte[] compile(StClass clazz) {
         return new StCompiler().compile0(clazz);
@@ -103,7 +106,11 @@ public class StCompiler implements StVisitor {
     @Override
     public void visitReturnStatement(StReturnStatement returnStatement) {
         returnStatement.expression.accept(this);
-        mv.visitInsn(ARETURN); // Object only
+        if (hooks.isEmpty()) {
+            mv.visitInsn(ARETURN); // Object only
+        } else {
+            mv.visitJumpInsn(GOTO, hooks.get(0));
+        }
     }
 
     @Override
@@ -239,7 +246,6 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitDupExpression(StDupExpression dupExpression) {
-        dupExpression.expression.accept(this);
         mv.visitInsn(DUP);
     }
 
@@ -250,6 +256,19 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitNoopStatement(StNoopStatement noopStatement) {
+    }
+
+    @Override
+    public void visitSwapExpression(StSwapExpression swapExpression) {
+        mv.visitInsn(SWAP);
+    }
+
+    @Override
+    public void visitReturnHookStatement(StReturnHookStatement returnHookStatement) {
+        hooks.add(0, new Label());
+        returnHookStatement.statement.accept(this);
+        mv.visitLabel(hooks.remove(0));
+        returnHookStatement.hook.accept(this);
     }
 
     private static String internal(String name) {

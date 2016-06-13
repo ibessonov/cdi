@@ -5,7 +5,7 @@ import java.lang.annotation.Annotation;
 /**
  * @author ibessonov
  */
-public interface Transformer<T extends Annotation> {
+public interface ValueTransformer<T extends Annotation> {
 
     Object transform(Object object, T annotation);
 }

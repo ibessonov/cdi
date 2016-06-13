@@ -3,10 +3,10 @@ package org.ibess.cdi.runtime.st;
 /**
  * @author ibessonov
  */
-public class StDupExpression implements StExpression {
+public class StSwapExpression implements StExpression {
 
     @Override
     public void accept(StVisitor visitor) {
-        visitor.visitDupExpression(this);
+        visitor.visitSwapExpression(this);
     }
 }

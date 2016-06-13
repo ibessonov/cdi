@@ -7,5 +7,9 @@ import java.lang.annotation.Annotation;
  */
 public interface Registrar {
 
-    <T extends Annotation> void registerTransformer(Class<T> clazz, Transformer<T> transformer);
+    <T extends Annotation> void registerValueTransformer(Class<T> clazz, ValueTransformer<T> valueTransformer);
+
+    <T extends Annotation> void registerMethodTransformer(Class<T> clazz, MethodTransformer<T> methodTransformer);
+
+//    <T extends Annotation> void registerClassTransformer(Class<T> clazz, ClassTransformer<T> classTransformer);
 }

@@ -1,9 +1,6 @@
 package org.ibess.cdi.runtime;
 
-import org.ibess.cdi.Context;
-import org.ibess.cdi.Extension;
-import org.ibess.cdi.Registrar;
-import org.ibess.cdi.Transformer;
+import org.ibess.cdi.*;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
 import org.ibess.cdi.internal.$CdiObject;
@@ -29,7 +26,8 @@ public final class ContextImpl implements $Context {
     private static final Map<Class, Class> defaults = new HashMap<>();
     private static final AtomicInteger counter = new AtomicInteger();
 
-    private final Map<Class, ArrayList<Transformer>> transformers = new HashMap<>();
+    private final Map<Class, ArrayList<ValueTransformer>> valueTransformers = new HashMap<>();
+    private final Map<Class, ArrayList<MethodTransformer>> methodTransformers = new HashMap<>();
     private final InheritorGenerator generator = new InheritorGenerator(this, Integer.toString(counter.getAndIncrement()));
 
     public ContextImpl(Extension... extensions) {
@@ -38,8 +36,12 @@ public final class ContextImpl implements $Context {
             for (Extension extension : extensions) {
                 extension.register(registrar);
             }
-            for (ArrayList<Transformer> list : transformers.values()) {
-                list.trimToSize(); // reduce memory consumption
+            // reduce memory consumption
+            for (ArrayList<ValueTransformer> list : valueTransformers.values()) {
+                list.trimToSize();
+            }
+            for (ArrayList<MethodTransformer> list : methodTransformers.values()) {
+                list.trimToSize();
             }
         }
     }
@@ -47,15 +49,27 @@ public final class ContextImpl implements $Context {
     private class RegistrarImpl implements Registrar {
 
         @Override
-        public <T extends Annotation> void registerTransformer(Class<T> clazz, Transformer<T> transformer) {
-            transformers.computeIfAbsent(clazz, c -> new ArrayList<>()).add(transformer);
+        public <T extends Annotation> void registerValueTransformer(Class<T> clazz, ValueTransformer<T> valueTransformer) {
+            valueTransformers.computeIfAbsent(clazz, c -> new ArrayList<>()).add(valueTransformer);
+        }
+
+        @Override
+        public <T extends Annotation> void registerMethodTransformer(Class<T> clazz, MethodTransformer<T> methodTransformer) {
+            methodTransformers.computeIfAbsent(clazz, c -> new ArrayList<>()).add(methodTransformer);
         }
     }
 
+    public boolean valueTransformerRegistered(Class clazz) {
+        return valueTransformers.containsKey(clazz);
+    }
+
     @SuppressWarnings("unchecked")
-    public Transformer getTransformer(Class clazz) {
-        ArrayList<Transformer> list = this.transformers.get(clazz);
+    public <T extends Annotation> ValueTransformer<T> getValueTransformer(Class<T> clazz) {
+        ArrayList<ValueTransformer> list = this.valueTransformers.get(clazz);
         if (list == null) return null;
+        if (list.size() == 1) {
+            return list.get(0);
+        }
         return (object, annotation) -> {
             for (int i = 0, len = list.size(); i < len; i++) {
                 object = list.get(i).transform(object, annotation);
@@ -64,8 +78,23 @@ public final class ContextImpl implements $Context {
         };
     }
 
-    public boolean transformerRegistered(Class clazz) {
-        return transformers.containsKey(clazz);
+    public boolean methodTransformerRegistered(Class clazz) {
+        return methodTransformers.containsKey(clazz);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends Annotation> MethodTransformer<T> getMethodTransformer(Class<T> clazz) {
+        ArrayList<MethodTransformer> list = this.methodTransformers.get(clazz);
+        if (list == null) return null;
+        if (list.size() == 1) {
+            return list.get(0);
+        }
+        return (statement, method, annotation) -> {
+            for (int i = 0, len = list.size(); i < len; i++) {
+                statement = list.get(i).transform(statement, method, annotation);
+            }
+            return statement;
+        };
     }
 
     @Override public Object $unscoped(Class clazz) {
