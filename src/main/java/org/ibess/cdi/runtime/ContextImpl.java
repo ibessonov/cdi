@@ -70,9 +70,9 @@ public final class ContextImpl implements $Context {
         if (list.size() == 1) {
             return list.get(0);
         }
-        return (object, annotation) -> {
+        return (object, c, annotation) -> {
             for (int i = 0, len = list.size(); i < len; i++) {
-                object = list.get(i).transform(object, annotation);
+                object = list.get(i).transform(object, c, annotation);
             }
             return object;
         };

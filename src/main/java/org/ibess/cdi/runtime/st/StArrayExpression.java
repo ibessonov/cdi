@@ -1,19 +1,16 @@
 package org.ibess.cdi.runtime.st;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.RandomAccess;
-
 /**
  * @author ibessonov
  */
 public class StArrayExpression implements StExpression {
-    public final Class<?> type;
-    public final List<StExpression> elements;
 
-    public <L extends List<StExpression> & RandomAccess> StArrayExpression(Class<?> type, L elements) {
+    public final Class<?> type;
+    public final StExpression[] elements;
+
+    public StArrayExpression(Class<?> type, StExpression[] elements) {
         this.type = type;
-        this.elements = Collections.unmodifiableList(elements);
+        this.elements = elements.clone();
     }
 
     @Override

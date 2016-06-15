@@ -50,14 +50,14 @@ public class ContextTest {
 
         @Override
         public void register(Registrar registrar) {
-            registrar.registerValueTransformer(NotNull.class, (object, annotation) ->
+            registrar.registerValueTransformer(NotNull.class, (object, clazz, annotation) ->
                 Objects.requireNonNull(object, annotation.value())
             );
-            registrar.registerValueTransformer(Trimmed.class, (object, annotation) -> {
-                if (object instanceof String) {
+            registrar.registerValueTransformer(Trimmed.class, (object, clazz, annotation) -> {
+                if (CharSequence.class.isAssignableFrom(clazz)) {
                     return object.toString().trim();
                 } else {
-                    throw new IllegalArgumentException(object.getClass().getName());
+                    throw new IllegalArgumentException(clazz.getName());
                 }
             });
             registrar.registerMethodTransformer(Traced.class, (statement, method, annotation) ->

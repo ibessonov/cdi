@@ -29,7 +29,7 @@ import static org.ibess.cdi.runtime.st.Dsl.*;
 /**
  * @author ibessonov
  */
-public final class InheritorGenerator {
+final class InheritorGenerator {
 
     private static final String CDI_SUFFIX = "$Cdi";
     private static final String I_SUFFIX   = "$I";
@@ -64,7 +64,7 @@ public final class InheritorGenerator {
             $  = $Descriptor.class.getDeclaredMethod("$",  Class.class, $Descriptor[].class);
             $0 = $Descriptor.class.getDeclaredMethod("$0", Class.class);
 
-            transform = ValueTransformer.class.getDeclaredMethod("transform", Object.class, Annotation.class);
+            transform = ValueTransformer.class.getDeclaredMethod("transform", Object.class, Class.class, Annotation.class);
         } catch (NoSuchMethodException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -94,9 +94,6 @@ public final class InheritorGenerator {
             // throw
         }
         Scoped scoped = clazz.getAnnotation(Scoped.class);
-        if (scoped == null) { // remove this checking in future. This class has to be invisible for users
-            throw new ImpossibleError();
-        }
         if (scoped.value() != STATELESS && clazz.getTypeParameters().length > 0) {
             throw new CdiException(PARAMETERIZED_NON_STATELESS, clazz.getCanonicalName());
         }
@@ -184,7 +181,9 @@ public final class InheritorGenerator {
                         String annotationField  = ci.addStaticField(Annotation.class,  annotation);
                         currentExpression = $invokeInterfaceMethod(transform,
                             $on($myStaticField(transformerField, ValueTransformer.class)),
-                            $withParameters(currentExpression, $myStaticField(annotationField, Annotation.class))
+                            $withParameters(
+                                currentExpression, $class(parameterTypes[i]), $myStaticField(annotationField, Annotation.class)
+                            )
                         );
                         statements.add($assignMethodParam(i, $cast(parameterTypes[i], currentExpression)));
                     }
@@ -221,15 +220,16 @@ public final class InheritorGenerator {
                     }
                 }
                 if (returnType != void.class && !valueAnnotations.isEmpty()) {
-                    // hook
-                    StExpression hookExpression = $swap();
+                    StExpression hookExpression = $swap(); // that's tricky
                     for (Annotation annotation : valueAnnotations) {
                         ValueTransformer valueTransformer = context.getValueTransformer(annotation.annotationType());
                         String transformerField = ci.addStaticField(ValueTransformer.class, valueTransformer);
-                        String annotationField  = ci.addStaticField(Annotation.class,  annotation);
+                        String annotationField  = ci.addStaticField(Annotation.class, annotation);
                         hookExpression = $invokeInterfaceMethod(transform,
-                                $on($myStaticField(transformerField, ValueTransformer.class)),
-                                $withParameters(hookExpression, $myStaticField(annotationField, Annotation.class))
+                            $on($myStaticField(transformerField, ValueTransformer.class)),
+                            $withParameters(
+                                hookExpression, $class(returnType), $myStaticField(annotationField, Annotation.class)
+                            )
                         );
                     }
                     methodStatement = $returnHook(methodStatement, $return($cast(returnType, hookExpression)));
@@ -530,25 +530,32 @@ public final class InheritorGenerator {
     public static class ClassInfo {
         public Class compiledClass = null;
 
-        public Temp x = new Temp();
+        public Temp x;
 
         public static class Temp {
-            public String originalName;
-            public Field[] declaredFields;
-            public Method[] declaredMethods;
-            public Method[] methods;
-            public Map<String, Integer> paramsIndex = new HashMap<>();
-            public Set<Class> dependsOn = new HashSet<>();
+            public final String originalName;
+            public final Field[] declaredFields;
+            public final Method[] declaredMethods;
+            public final Method[] methods;
+            public final Map<String, Integer> paramsIndex = new HashMap<>();
+            public final Set<Class> dependsOn = new HashSet<>();
             public Method constructor = null;
             public boolean hasContext = false;
             public boolean hasDescriptors = false;
-            public List<StClass> stClasses = new ArrayList<>();
-            public List<FieldInfo> staticFields = new ArrayList<>();
+            public final List<StClass> stClasses = new ArrayList<>();
+            public final List<FieldInfo> staticFields = new ArrayList<>();
 
             public final AtomicInteger counter = new AtomicInteger();
+
+            public Temp(String originalName, Field[] declaredFields, Method[] declaredMethods, Method[] methods) {
+                this.originalName = originalName;
+                this.declaredFields = declaredFields;
+                this.declaredMethods = declaredMethods;
+                this.methods = methods;
+            }
         }
 
-        static class FieldInfo {
+        public static class FieldInfo {
             public final String name;
             public final Class<?> type;
             public final Object value;
@@ -561,10 +568,8 @@ public final class InheritorGenerator {
         }
 
         public ClassInfo(Class clazz) {
-            this.x.originalName = clazz.getCanonicalName();
-            this.x.declaredFields = clazz.getDeclaredFields();
-            this.x.declaredMethods = clazz.getDeclaredMethods();
-            this.x.methods = clazz.getMethods();
+            this.x = new Temp(clazz.getCanonicalName(), clazz.getDeclaredFields(),
+                              clazz.getDeclaredMethods(), clazz.getMethods());
 
             TypeVariable[] params = clazz.getTypeParameters();
             for (int i = 0; i < params.length; i++) {

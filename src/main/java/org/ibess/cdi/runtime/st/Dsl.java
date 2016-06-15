@@ -2,7 +2,7 @@ package org.ibess.cdi.runtime.st;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.List;
 
 /**
  * @author ibessonov
@@ -16,7 +16,7 @@ public class Dsl {
 
     public static StClass $class(String name, Class<?> superClass, Class<?>[] interfaces,
                                  StField[] fields, StMethod[] methods) {
-        return new StClass(superClass, $list(interfaces), name, $list(fields), $list(methods));
+        return new StClass(superClass, interfaces, name, fields, methods);
     }
 
     public static String $named(String name) {
@@ -60,7 +60,7 @@ public class Dsl {
     }
 
     private static StMethod $method0(boolean isStatic, String name, Class<?>[] parameters, Class<?> returnType, StStatement[] body) {
-        return new StMethod(isStatic, name, $list(parameters), returnType, new StScopeStatement(body));
+        return new StMethod(isStatic, name, parameters, returnType, new StScopeStatement(body));
     }
 
     public static Class<?>[] $withParameterTypes(Class<?>... types) {
@@ -157,11 +157,11 @@ public class Dsl {
 
     private static StMethodCallExpression $invokeMethod(InvokeType invokeType, String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression left, StExpression[] parameters) {
-        return new StMethodCallExpression(left, name, declaringClassName, returnType, $list(parameterTypes), $list(parameters), invokeType);
+        return new StMethodCallExpression(left, name, declaringClassName, returnType, parameterTypes, parameters, invokeType);
     }
 
     private static StMethodCallExpression $invokeMethod(InvokeType invokeType, Method method, StExpression left, StExpression[] parameters) {
-        return new StMethodCallExpression(left, method, $list(parameters), invokeType);
+        return new StMethodCallExpression(left, method, parameters, invokeType);
     }
 
     public static String $ofClass(Class<?> clazz) {
@@ -261,12 +261,7 @@ public class Dsl {
     }
 
     public static StExpression $array(Class<?> type, StExpression[] elements) {
-        return new StArrayExpression(type, $list(elements));
-    }
-
-    @SafeVarargs @SuppressWarnings("unchecked")
-    private static <T, L extends List<T> & RandomAccess> L $list(T... array) {
-        return (L) Arrays.asList(array);
+        return new StArrayExpression(type, elements);
     }
 
     public static StField[] $fields(List<StField> fields) {

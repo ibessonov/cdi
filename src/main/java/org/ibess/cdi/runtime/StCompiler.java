@@ -24,7 +24,7 @@ public class StCompiler implements StVisitor {
     private ClassWriter cw;
     private String internalClassName;
     private MethodVisitor mv;
-    private List<Label> hooks = new LinkedList<>();
+    private final List<Label> hooks = new LinkedList<>();
 
     public static byte[] compile(StClass clazz) {
         return new StCompiler().compile0(clazz);
@@ -49,13 +49,13 @@ public class StCompiler implements StVisitor {
         }
         String superClassInternalName = getInternalName(superClass);
         internalClassName = internal(clazz.name);
-        List<Class<?>> interfaces = clazz.interfaces;
-        String[] interfacesInternalNames = new String[interfaces.size() + (isInterface ? 1 : 0)];
-        for (int i = 0, size = interfaces.size(); i < size; i++) {
-            interfacesInternalNames[i] = getInternalName(interfaces.get(i));
+        Class<?>[] interfaces = clazz.interfaces;
+        String[] interfacesInternalNames = new String[interfaces.length + (isInterface ? 1 : 0)];
+        for (int i = 0, size = interfaces.length; i < size; i++) {
+            interfacesInternalNames[i] = getInternalName(interfaces[i]);
         }
         if (isInterface) {
-            interfacesInternalNames[interfaces.size()] = getInternalName(clazz.superClass);
+            interfacesInternalNames[interfaces.length] = getInternalName(clazz.superClass);
         }
 
         cw.visit(CLASS_VERSION, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalClassName, null,
@@ -76,10 +76,10 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitMethod(StMethod method) {
-        List<Class<?>> params = method.parameters;
-        Type[] types = new Type[params.size()];
-        for (int i = 0, size = params.size(); i < size; i++) {
-            types[i] = getType(params.get(i));
+        Class<?>[] params = method.parameters;
+        Type[] types = new Type[params.length];
+        for (int i = 0, size = params.length; i < size; i++) {
+            types[i] = getType(params[i]);
         }
         Type returnType = getType(method.returnType);
         int modifiers = method.isStatic ? ACC_STATIC | ACC_PUBLIC : ACC_PUBLIC;
@@ -193,10 +193,10 @@ public class StCompiler implements StVisitor {
             case STATIC:    opcode = INVOKESTATIC;    break;
         }
 
-        List<Class<?>> params = methodCallExpression.paramTypes;
-        Type[] paramTypes = new Type[params.size()];
-        for (int i = 0, size = params.size(); i < size; i++) {
-            paramTypes[i] = getType(params.get(i));
+        Class<?>[] params = methodCallExpression.paramTypes;
+        Type[] paramTypes = new Type[params.length];
+        for (int i = 0, size = params.length; i < size; i++) {
+            paramTypes[i] = getType(params[i]);
         }
         Type returnType = getType(methodCallExpression.returnType);
         mv.visitMethodInsn(opcode, internal(methodCallExpression.declaringClassName), methodCallExpression.name,
@@ -231,8 +231,8 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitArrayExpression(StArrayExpression arrayExpression) {
-        List<StExpression> elements = arrayExpression.elements;
-        visitIntConstantExpression(elements.size());
+        StExpression[] elements = arrayExpression.elements;
+        visitIntConstantExpression(elements.length);
         mv.visitTypeInsn(ANEWARRAY, getInternalName(arrayExpression.type));
 
         int index = 0;
