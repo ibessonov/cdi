@@ -24,6 +24,8 @@ import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
 import static org.ibess.cdi.runtime.StCompiler.compile;
+import static org.ibess.cdi.runtime.st.CdiUtil.box;
+import static org.ibess.cdi.runtime.st.CdiUtil.unbox;
 import static org.ibess.cdi.runtime.st.Dsl.*;
 
 /**
@@ -174,19 +176,9 @@ final class InheritorGenerator {
                     }
                 }
                 if (!annotations.isEmpty()) {
-                    StExpression currentExpression = $methodParam(i);
-                    for (Annotation annotation : annotations) {
-                        ValueTransformer valueTransformer = context.getValueTransformer(annotation.annotationType());
-                        String transformerField = ci.addStaticField(ValueTransformer.class, valueTransformer);
-                        String annotationField  = ci.addStaticField(Annotation.class,  annotation);
-                        currentExpression = $invokeInterfaceMethod(transform,
-                            $on($myStaticField(transformerField, ValueTransformer.class)),
-                            $withParameters(
-                                currentExpression, $class(parameterTypes[i]), $myStaticField(annotationField, Annotation.class)
-                            )
-                        );
-                        statements.add($assignMethodParam(i, $cast(parameterTypes[i], currentExpression)));
-                    }
+                    statements.add($assignMethodParam(i,
+                        transformValue(ci, annotations, $methodParam(i), parameterTypes[i])
+                    ));
                 }
             }
             List<Annotation> valueAnnotations = new ArrayList<>();
@@ -220,19 +212,9 @@ final class InheritorGenerator {
                     }
                 }
                 if (returnType != void.class && !valueAnnotations.isEmpty()) {
-                    StExpression hookExpression = $swap(); // that's tricky
-                    for (Annotation annotation : valueAnnotations) {
-                        ValueTransformer valueTransformer = context.getValueTransformer(annotation.annotationType());
-                        String transformerField = ci.addStaticField(ValueTransformer.class, valueTransformer);
-                        String annotationField  = ci.addStaticField(Annotation.class, annotation);
-                        hookExpression = $invokeInterfaceMethod(transform,
-                            $on($myStaticField(transformerField, ValueTransformer.class)),
-                            $withParameters(
-                                hookExpression, $class(returnType), $myStaticField(annotationField, Annotation.class)
-                            )
-                        );
-                    }
-                    methodStatement = $returnHook(methodStatement, $return($cast(returnType, hookExpression)));
+                    methodStatement = $returnHook(methodStatement, $return(
+                        transformValue(ci, valueAnnotations, $swap, returnType)
+                    ));
                 }
                 statements.add(methodStatement);
                 //noinspection ConfusingArgumentToVarargsMethod
@@ -260,6 +242,29 @@ final class InheritorGenerator {
         ));
 
         return ci;
+    }
+
+    private StExpression transformValue(ClassInfo ci, Collection<Annotation> annotations,
+                                        StExpression expression, Class<?> type) {
+        if (type.isPrimitive()) {
+            expression = box(type, expression);
+        }
+        for (Annotation annotation : annotations) {
+            ValueTransformer valueTransformer = context.getValueTransformer(annotation.annotationType());
+            String transformerField = ci.addStaticField(ValueTransformer.class, valueTransformer);
+            String annotationField  = ci.addStaticField(Annotation.class, annotation);
+            expression = $invokeInterfaceMethod(transform,
+                $on($myStaticField(transformerField, ValueTransformer.class)),
+                $withParameters(
+                    expression, $class(type), $myStaticField(annotationField, Annotation.class)
+                )
+            );
+        }
+        if (type.isPrimitive()) {
+            return unbox(type, expression);
+        } else {
+            return $cast(type, expression);
+        }
     }
 
     private static StStatement[] getConstructorBody(ClassInfo ci) {

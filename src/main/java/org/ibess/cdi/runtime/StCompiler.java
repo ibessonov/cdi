@@ -24,6 +24,8 @@ public class StCompiler implements StVisitor {
     private ClassWriter cw;
     private String internalClassName;
     private MethodVisitor mv;
+    private Class<?>[] parameters;
+    private int[] offsets;
     private final List<Label> hooks = new LinkedList<>();
 
     public static byte[] compile(StClass clazz) {
@@ -86,7 +88,15 @@ public class StCompiler implements StVisitor {
         mv = cw.visitMethod(modifiers, method.name, getMethodDescriptor(returnType, types), null, null);
         mv.visitCode();
 
+        parameters = method.parameters;
+        offsets = new int[parameters.length];
+        for (int i = 1; i < parameters.length; i++) {
+            offsets[i] = offsets[i - 1] + 1
+                    + (parameters[i - 1] == long.class || parameters[i - 1] == double.class ? 1 : 0);
+        }
         method.statement.accept(this);
+        offsets = null;
+        parameters = null;
 
         if (returnType == VOID_TYPE) {
             mv.visitInsn(RETURN);
@@ -131,7 +141,8 @@ public class StCompiler implements StVisitor {
     @Override
     public void visitParamAssignmentStatement(StParamAssignmentStatement paramAssignmentStatement) {
         paramAssignmentStatement.expression.accept(this);
-        mv.visitVarInsn(ASTORE, paramAssignmentStatement.index + 1); // Object only
+        int offset = offsets[paramAssignmentStatement.index];
+        mv.visitVarInsn(storeOpcode(parameters[paramAssignmentStatement.index]), offset + 1);
     }
 
     @Override
@@ -141,7 +152,8 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitGetParameterExpression(StGetParameterExpression getParameterExpression) {
-        mv.visitVarInsn(ALOAD, getParameterExpression.index + 1); // Object only
+        int offset = offsets[getParameterExpression.index];
+        mv.visitVarInsn(loadOpcode(parameters[getParameterExpression.index]), offset + 1);
     }
 
     @Override
@@ -269,6 +281,26 @@ public class StCompiler implements StVisitor {
         returnHookStatement.statement.accept(this);
         mv.visitLabel(hooks.remove(0));
         returnHookStatement.hook.accept(this);
+    }
+
+    private static int storeOpcode(Class<?> type) {
+        if (!type.isPrimitive()) return ASTORE;
+        switch (type.getName()) {
+            case "long":   return LSTORE;
+            case "float":  return FSTORE;
+            case "double": return DSTORE;
+            default:       return ISTORE;
+        }
+    }
+
+    private static int loadOpcode(Class<?> type) {
+        if (!type.isPrimitive()) return ALOAD;
+        switch (type.getName()) {
+            case "long":   return LLOAD;
+            case "float":  return FLOAD;
+            case "double": return DLOAD;
+            default:       return ILOAD;
+        }
     }
 
     private static String internal(String name) {

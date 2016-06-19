@@ -50,12 +50,12 @@ public final class ContextImpl implements $Context {
 
         @Override
         public <T extends Annotation> void registerValueTransformer(Class<T> clazz, ValueTransformer<T> valueTransformer) {
-            valueTransformers.computeIfAbsent(clazz, c -> new ArrayList<>()).add(valueTransformer);
+            valueTransformers.computeIfAbsent(clazz, c -> new ArrayList<>(1)).add(valueTransformer);
         }
 
         @Override
         public <T extends Annotation> void registerMethodTransformer(Class<T> clazz, MethodTransformer<T> methodTransformer) {
-            methodTransformers.computeIfAbsent(clazz, c -> new ArrayList<>()).add(methodTransformer);
+            methodTransformers.computeIfAbsent(clazz, c -> new ArrayList<>(1)).add(methodTransformer);
         }
     }
 

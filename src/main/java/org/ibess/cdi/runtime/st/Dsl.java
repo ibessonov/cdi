@@ -4,6 +4,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 
+import static org.ibess.cdi.runtime.st.CdiUtil.box;
+
 /**
  * @author ibessonov
  */
@@ -13,6 +15,11 @@ public class Dsl {
     public static final StSwapExpression $swap = new StSwapExpression();
     public static final StNullExpression $null = new StNullExpression();
     public static final StDupExpression $dup = new StDupExpression();
+
+    private static final StField[] EMPTY_FIELDS = {};
+    private static final StStatement[] EMPTY_STATEMENTS = {};
+    private static final StExpression[] EMPTY_EXPRESSIONS = {};
+    private static final Class<?>[] EMPTY_CLASSES = {};
 
     public static StClass $class(String name, Class<?> superClass, Class<?>[] interfaces,
                                  StField[] fields, StMethod[] methods) {
@@ -36,7 +43,7 @@ public class Dsl {
     }
 
     public static StField[] $withoutFields() {
-        return $withFields();
+        return EMPTY_FIELDS;
     }
 
     public static StMethod[] $withMethods(StMethod... methods) {
@@ -68,7 +75,7 @@ public class Dsl {
     }
 
     public static Class<?>[] $withoutParameterTypes() {
-        return $withParameterTypes();
+        return EMPTY_CLASSES;
     }
 
     public static Class<?> $returns(Class<?> returnType) {
@@ -189,7 +196,7 @@ public class Dsl {
     }
 
     public static StExpression[] $withoutParameters() {
-        return $withParameters();
+        return EMPTY_EXPRESSIONS;
     }
 
     public static StExpression $this() {
@@ -229,6 +236,9 @@ public class Dsl {
     }
 
     public static StExpression $class(Class<?> clazz) {
+        if (clazz.isPrimitive()) {
+            return $getStaticField(box(clazz).getName(), "TYPE", Class.class);
+        }
         return new StClassExpression(clazz);
     }
 
@@ -237,11 +247,15 @@ public class Dsl {
     }
 
     public static StExpression $myStaticField(String name, Class<?> type) {
-        return new StGetFieldExpression($this, true, null, type, name);
+        return new StGetFieldExpression(null, true, null, type, name);
     }
 
     public static StExpression $getField(String declaringClassName, String name, Class<?> type, StExpression expression) {
         return new StGetFieldExpression(expression, false, declaringClassName, type, name);
+    }
+
+    public static StExpression $getStaticField(String declaringClassName, String name, Class<?> type) {
+        return new StGetFieldExpression(null, true, declaringClassName, type, name);
     }
 
     public static Class<?> $withType(Class<?> clazz) {
@@ -273,10 +287,10 @@ public class Dsl {
     }
 
     public static StStatement[] $statements(List<StStatement> statements) {
-        return statements.toArray(new StStatement[0]);
+        return statements.toArray(EMPTY_STATEMENTS);
     }
 
     public static StExpression[] $expressions(List<StExpression> expressions) {
-        return expressions.toArray(new StExpression[0]);
+        return expressions.toArray(EMPTY_EXPRESSIONS);
     }
 }

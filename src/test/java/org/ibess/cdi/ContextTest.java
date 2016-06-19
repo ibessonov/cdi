@@ -221,7 +221,7 @@ public class ContextTest {
     }
 
     @Test
-    public void testNotNull() {
+    public void notNull() {
         ValueTransformers valueTransformers = context.lookup(ValueTransformers.class);
         try {
             valueTransformers.notNull(null);
@@ -232,7 +232,7 @@ public class ContextTest {
     }
 
     @Test
-    public void testTrimmed() {
+    public void trimmed() {
         ValueTransformers valueTransformers = context.lookup(ValueTransformers.class);
         assertEquals("str", valueTransformers.trimmed());
     }
@@ -245,7 +245,7 @@ public class ContextTest {
     }
 
     @Test
-    public void testTraced() {
+    public void traced() {
         MethodTransformers methodTransformers = context.lookup(MethodTransformers.class);
         Integer value0 = methodTransformers.nextInt();
         Integer value1 = methodTransformers.nextInt();
@@ -253,10 +253,22 @@ public class ContextTest {
     }
 
     @Test(timeout = 150)
-    public void zPerformance() {
-        $Descriptor $ = $(InjectedClass.class, $0(String.class), $0(List.class));
+    public void performance() {
+        $Descriptor descriptor = $(InjectedClass.class, $0(String.class), $0(List.class));
         for (int i = 0; i < 100000; i++) {
-            context.$lookup($);
+            context.$lookup(descriptor);
         }
+    }
+
+    @Scoped static class Primitives {
+        public void f(@NotNull boolean z, @NotNull byte b, @NotNull char  c, @NotNull short  s,
+                      @NotNull int     i, @NotNull long j, @NotNull float f, @NotNull double d) {
+        }
+    }
+
+    @Test
+    public void primitives() {
+        Primitives primitives = context.lookup(Primitives.class);
+        primitives.f(false, (byte) 0, '\0', (short) 0, 0, 0L, 0f, 0d);
     }
 }
