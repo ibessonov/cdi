@@ -7,7 +7,7 @@ import static org.ibess.cdi.runtime.st.Dsl.*;
 /**
  * @author ibessonov
  */
-public final class CdiUtil {
+public final class BoxingUtil {
 
     private static final Method zValueOf;
     private static final Method bValueOf;

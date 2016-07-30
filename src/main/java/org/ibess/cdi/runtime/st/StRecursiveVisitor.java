@@ -92,6 +92,10 @@ public class StRecursiveVisitor implements StVisitor {
     }
 
     @Override
+    public void visitConstant(StConstant constant) {
+    }
+
+    @Override
     public void visitCastExpression(StCastExpression castExpression) {
         castExpression.expression.accept(this);
     }
@@ -123,5 +127,23 @@ public class StRecursiveVisitor implements StVisitor {
     public void visitReturnHookStatement(StReturnHookStatement returnHookStatement) {
         returnHookStatement.statement.accept(this);
         returnHookStatement.hook.accept(this);
+    }
+
+    @Override
+    public void visitIfStatement(StIfStatement ifStatement) {
+        ifStatement.condition.accept(this);
+        ifStatement.then.accept(this);
+        if (ifStatement.els != null) {
+            ifStatement.els.accept(this);
+        }
+    }
+
+    @Override
+    public void visitIfNullStatement(StIfNullStatement ifNullStatement) {
+        ifNullStatement.expression.accept(this);
+        ifNullStatement.then.accept(this);
+        if (ifNullStatement.els != null) {
+            ifNullStatement.els.accept(this);
+        }
     }
 }

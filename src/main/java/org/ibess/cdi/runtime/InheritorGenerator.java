@@ -3,7 +3,6 @@ package org.ibess.cdi.runtime;
 import org.ibess.cdi.Context;
 import org.ibess.cdi.MethodTransformer;
 import org.ibess.cdi.ValueTransformer;
-import org.ibess.cdi.annotations.Constructor;
 import org.ibess.cdi.annotations.Inject;
 import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.exceptions.CdiException;
@@ -24,8 +23,8 @@ import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
 import static org.ibess.cdi.runtime.StCompiler.compile;
-import static org.ibess.cdi.runtime.st.CdiUtil.box;
-import static org.ibess.cdi.runtime.st.CdiUtil.unbox;
+import static org.ibess.cdi.runtime.st.BoxingUtil.box;
+import static org.ibess.cdi.runtime.st.BoxingUtil.unbox;
 import static org.ibess.cdi.runtime.st.Dsl.*;
 
 /**
@@ -46,16 +45,6 @@ final class InheritorGenerator {
 
     private static final Method transform;
 
-    private final ContextImpl context;
-    private final Map<Class, ClassInfo> cache = new HashMap<>();
-
-    private final String postfix;
-
-    InheritorGenerator(ContextImpl context, String postfix) {
-        this.context = context;
-        this.postfix = postfix;
-    }
-
     static {
         try {
             $lookup    = $Context.class.getDeclaredMethod("$lookup",    $Descriptor.class);
@@ -70,6 +59,16 @@ final class InheritorGenerator {
         } catch (NoSuchMethodException e) {
             throw new ExceptionInInitializerError(e);
         }
+    }
+
+    private final ContextImpl context;
+    private final Map<Class, ClassInfo> cache = new HashMap<>();
+
+    private final String postfix;
+
+    InheritorGenerator(ContextImpl context, String postfix) {
+        this.context = context;
+        this.postfix = postfix;
     }
 
     public Class getSubclass(Class clazz) {
@@ -137,26 +136,6 @@ final class InheritorGenerator {
 
         // methods
         List<StMethod> methods = new ArrayList<>();
-        methods.add($method($named("<init>"), $withParameterTypes($Context.class, $Descriptor[].class), $returnsNothing(), $withBody(
-            $invoke($invokeSpecialMethod($ofClass(clazz), $named("<init>"),
-                $withoutParameterTypes(), $returnsNothing(),
-                $on($this), $withoutParameters()
-            )),
-            !ci.x.hasContext ? $noop()
-                : $assignMyField($named("$c"), $withType($Context.class), $value($methodParam(0))),
-            !ci.x.hasDescriptors ? $noop()
-                : $assignMyField($named("$d"), $withType($Descriptor[].class), $value($methodParam(1)))
-        )));
-
-        methods.add($staticMethod($named("<clinit>"), $withoutParameterTypes(), $returnsNothing(), $withBody(
-            $assignStatic($named("$i"), $ofClass(inheritorClassName), $withType($Instantiator.class), $value(
-                $invokeSpecialMethod($ofClass(instantiatorClassName), $named("<init>"),
-                    $withoutParameterTypes(), $returnsNothing(),
-                    $on($new(instantiatorClassName)),
-                    $withParameters($dup)
-                )
-            ))
-        )));
 
         methods.add($method($named("$construct"), $withoutParameterTypes(), $returnsNothing(),
             $withBody(getConstructorBody(ci))
@@ -166,11 +145,15 @@ final class InheritorGenerator {
         for (Method method : ci.x.declaredMethods) {
             Annotation[][] parameterAnnotations = method.getParameterAnnotations();
             Class<?>[] parameterTypes = method.getParameterTypes();
+            Type[] genericParameterTypes = method.getGenericParameterTypes();
             List<StStatement> statements = new ArrayList<>();
             int parametersCount = parameterAnnotations.length;
             for (int i = 0; i < parametersCount; i++) {
                 List<Annotation> annotations = new ArrayList<>();
                 for (Annotation parameterAnnotation : parameterAnnotations[i]) {
+                    if (parameterAnnotation.annotationType() == Inject.class) {
+                        statements.add($assignMethodParam(i, getLookupExpression(ci, genericParameterTypes[i])));
+                    }
                     if (context.valueTransformerRegistered(parameterAnnotation.annotationType())) {
                         annotations.add(parameterAnnotation);
                     }
@@ -224,10 +207,41 @@ final class InheritorGenerator {
             }
         }
 
+        List<StStatement> initStaticFields = new ArrayList<>();
+        for (ClassInfo.FieldInfo field : ci.x.staticFields.values()) {
+            if (field.value instanceof Annotation) {
+                initStaticFields.add($assignStatic($named(field.name), $ofClass(inheritorClassName), $withType(field.type),
+                    $value(AnnotationGenerator.getExpression((Annotation) field.value))
+                ));
+            }
+        }
+
+        methods.add($staticMethod($named("<clinit>"), $withoutParameterTypes(), $returnsNothing(), $withBody(
+            $assignStatic($named("$i"), $ofClass(inheritorClassName), $withType($Instantiator.class), $value(
+                $invokeSpecialMethod($ofClass(instantiatorClassName), $named("<init>"),
+                    $withoutParameterTypes(), $returnsNothing(),
+                    $on($new(instantiatorClassName)),
+                    $withParameters($dup)
+                )
+            )),
+            $scope($statements(initStaticFields))
+        )));
+
+        methods.add($method($named("<init>"), $withParameterTypes($Context.class, $Descriptor[].class), $returnsNothing(), $withBody(
+            $invoke($invokeSpecialMethod($ofClass(clazz), $named("<init>"),
+                $withoutParameterTypes(), $returnsNothing(),
+                $on($this), $withoutParameters()
+            )),
+            !ci.x.hasContext ? $noop()
+                : $assignMyField($named("$c"), $withType($Context.class), $value($methodParam(0))),
+            !ci.x.hasDescriptors ? $noop()
+                : $assignMyField($named("$d"), $withType($Descriptor[].class), $value($methodParam(1)))
+        )));
+
         // fields
-        List<StField> fields = new ArrayList<>(3);
+        List<StField> fields = new ArrayList<>();
         fields.add($staticField($named("$i"), $withType($Instantiator.class)));
-        for (ClassInfo.FieldInfo field : ci.x.staticFields) {
+        for (ClassInfo.FieldInfo field : ci.x.staticFields.values()) {
             fields.add($staticField($named(field.name), $withType(field.type)));
         }
         if (ci.x.hasContext) {
@@ -274,8 +288,7 @@ final class InheritorGenerator {
                 statements.add($assign(field, $of($this), $value(getLookupExpression(ci, field.getGenericType()))));
             }
         }
-        Method constructor = ci.x.constructor;
-        if (constructor != null) {
+        for (Method constructor : ci.x.constructors) {
             int parameterCount = constructor.getParameterCount();
 
             Type[] parameterTypes = constructor.getGenericParameterTypes();
@@ -292,6 +305,7 @@ final class InheritorGenerator {
 
     private static StExpression getLookupExpression(ClassInfo ci, Type type) {
         if (type == Context.class) {
+            ci.x.hasContext = true;
             return $myField($named("$c"), $withType($Context.class));
         }
         if (type instanceof ParameterizedType) {
@@ -307,6 +321,7 @@ final class InheritorGenerator {
             }
         }
 
+        ci.x.hasContext = true;
         Class<?> rawClass = null;
         if (type instanceof Class) {
             rawClass = (Class) type;
@@ -419,8 +434,10 @@ final class InheritorGenerator {
         }
 
         try {
-            for (ClassInfo.FieldInfo field : ci.x.staticFields) {
-                ci.compiledClass.getDeclaredField(field.name).set(null, field.value);
+            for (ClassInfo.FieldInfo field : ci.x.staticFields.values()) {
+                if (!(field.value instanceof Annotation)) {
+                    ci.compiledClass.getDeclaredField(field.name).set(null, field.value);
+                }
             }
         } catch (IllegalAccessException | NoSuchFieldException e) {
             throw new ImpossibleError(e);
@@ -430,21 +447,16 @@ final class InheritorGenerator {
     }
 
     private static void validateConstructor(ClassInfo ci) {
-        Method constructor = null;
         for (Method method : ci.x.declaredMethods) {
-            if (method.isAnnotationPresent(Constructor.class)) {
-                if (constructor != null) {
-                    throw new CdiException(TOO_MANY_CONSTRUCTORS, ci.x.originalName);
-                }
-                constructor = method;
+            if (method.isAnnotationPresent(Inject.class)) {
+                ci.x.constructors.add(method);
             }
         }
-        if (constructor == null) return;
-        ci.x.constructor = constructor;
-
-        validateConstructor(ci, constructor);
-        for (Type parameterType : constructor.getGenericParameterTypes()) {
-            validateLookup(ci, parameterType);
+        for (Method constructor : ci.x.constructors) {
+            validateConstructor(ci, constructor);
+            for (Type parameterType : constructor.getGenericParameterTypes()) {
+                validateLookup(ci, parameterType);
+            }
         }
     }
 
@@ -534,7 +546,6 @@ final class InheritorGenerator {
 
     public static class ClassInfo {
         public Class compiledClass = null;
-
         public Temp x;
 
         public static class Temp {
@@ -544,19 +555,19 @@ final class InheritorGenerator {
             public final Method[] methods;
             public final Map<String, Integer> paramsIndex = new HashMap<>();
             public final Set<Class> dependsOn = new HashSet<>();
-            public Method constructor = null;
+            public final List<Method> constructors = new ArrayList<>();
             public boolean hasContext = false;
             public boolean hasDescriptors = false;
             public final List<StClass> stClasses = new ArrayList<>();
-            public final List<FieldInfo> staticFields = new ArrayList<>();
+            public final Map<Object, FieldInfo> staticFields = new HashMap<>();
 
             public final AtomicInteger counter = new AtomicInteger();
 
-            public Temp(String originalName, Field[] declaredFields, Method[] declaredMethods, Method[] methods) {
-                this.originalName = originalName;
-                this.declaredFields = declaredFields;
-                this.declaredMethods = declaredMethods;
-                this.methods = methods;
+            public Temp(Class clazz) {
+                this.originalName = clazz.getCanonicalName();
+                this.declaredFields = clazz.getDeclaredFields();
+                this.declaredMethods = clazz.getDeclaredMethods();
+                this.methods = clazz.getMethods();
             }
         }
 
@@ -573,9 +584,7 @@ final class InheritorGenerator {
         }
 
         public ClassInfo(Class clazz) {
-            this.x = new Temp(clazz.getCanonicalName(), clazz.getDeclaredFields(),
-                              clazz.getDeclaredMethods(), clazz.getMethods());
-
+            this.x = new Temp(clazz);
             TypeVariable[] params = clazz.getTypeParameters();
             for (int i = 0; i < params.length; i++) {
                 this.x.paramsIndex.put(params[i].getName(), i);
@@ -583,9 +592,12 @@ final class InheritorGenerator {
         }
 
         public String addStaticField(Class<?> type, Object value) {
-            String name = "$auto" + x.counter.getAndIncrement();
-            x.staticFields.add(new FieldInfo(name, type, value));
-            return name;
+            FieldInfo fieldInfo = x.staticFields.get(value);
+            if (fieldInfo == null) {
+                String name = "$auto" + x.counter.getAndIncrement();
+                x.staticFields.put(value, fieldInfo = new FieldInfo(name, type, value));
+            }
+            return fieldInfo.name;
         }
 
         public void dispose() {

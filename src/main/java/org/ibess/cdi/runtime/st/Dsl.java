@@ -4,7 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 
-import static org.ibess.cdi.runtime.st.CdiUtil.box;
+import static org.ibess.cdi.runtime.st.BoxingUtil.box;
 
 /**
  * @author ibessonov
@@ -16,32 +16,22 @@ public class Dsl {
     public static final StNullExpression $null = new StNullExpression();
     public static final StDupExpression $dup = new StDupExpression();
 
-    private static final StField[] EMPTY_FIELDS = {};
-    private static final StStatement[] EMPTY_STATEMENTS = {};
-    private static final StExpression[] EMPTY_EXPRESSIONS = {};
-    private static final Class<?>[] EMPTY_CLASSES = {};
+    /*
+     ********************************************************************************
+     *                              CLASS DECLARATIONS                              *
+     ********************************************************************************
+     */
 
     public static StClass $class(String name, Class<?> superClass, Class<?>[] interfaces,
                                  StField[] fields, StMethod[] methods) {
         return new StClass(superClass, interfaces, name, fields, methods);
     }
 
-    public static String $named(String name) {
-        return name;
-    }
-
-    public static Class<?> $extends(Class<?> clazz) {
-        return clazz;
-    }
-
-    public static Class<?>[] $implements(Class<?>... interfaces) {
-        return interfaces;
-    }
-
     public static StField[] $withFields(StField... fields) {
         return fields;
     }
 
+    private static final StField[] EMPTY_FIELDS = {};
     public static StField[] $withoutFields() {
         return EMPTY_FIELDS;
     }
@@ -70,10 +60,29 @@ public class Dsl {
         return new StMethod(isStatic, name, parameters, returnType, new StScopeStatement(body));
     }
 
+    /*
+     ********************************************************************************
+     *                                   UTILITIES                                  *
+     ********************************************************************************
+     */
+
+    public static String $named(String name) {
+        return name;
+    }
+
+    public static Class<?> $extends(Class<?> clazz) {
+        return clazz;
+    }
+
+    public static Class<?>[] $implements(Class<?>... interfaces) {
+        return interfaces;
+    }
+
     public static Class<?>[] $withParameterTypes(Class<?>... types) {
         return types;
     }
 
+    private static final Class<?>[] EMPTY_CLASSES = {};
     public static Class<?>[] $withoutParameterTypes() {
         return EMPTY_CLASSES;
     }
@@ -89,6 +98,59 @@ public class Dsl {
     public static StStatement[] $withBody(StStatement... statements) {
         return statements;
     }
+
+    public static StField[] $fields(List<StField> fields) {
+        return fields.toArray(new StField[0]);
+    }
+
+    public static StMethod[] $methods(List<StMethod> methods) {
+        return methods.toArray(new StMethod[0]);
+    }
+
+    private static final StStatement[] EMPTY_STATEMENTS = {};
+    public static StStatement[] $statements(List<StStatement> statements) {
+        return statements.toArray(EMPTY_STATEMENTS);
+    }
+
+    private static final StExpression[] EMPTY_EXPRESSIONS = {};
+    public static StExpression[] $expressions(List<StExpression> expressions) {
+        return expressions.toArray(EMPTY_EXPRESSIONS);
+    }
+
+
+    public static String $ofClass(Class<?> clazz) {
+        return clazz.getName();
+    }
+
+    public static String $ofClass(String name) {
+        return name;
+    }
+
+    public static StExpression $on(StExpression expression) {
+        return expression;
+    }
+
+    public static StExpression $of(StExpression expression) {
+        return expression;
+    }
+
+    public static StExpression $value(StExpression expression) {
+        return expression;
+    }
+
+    public static StExpression[] $withParameters(StExpression... parameters) {
+        return parameters;
+    }
+
+    public static StExpression[] $withoutParameters() {
+        return EMPTY_EXPRESSIONS;
+    }
+
+    /*
+     ********************************************************************************
+     *                                  METHOD BODY                                 *
+     ********************************************************************************
+     */
 
     public static StStatement $scope(StStatement... statements) {
         return new StScopeStatement(statements);
@@ -131,6 +193,42 @@ public class Dsl {
         return new StReturnHookStatement(statement, hook);
     }
 
+    public static StStatement $if(StExpression condition, StStatement then, StStatement els) {
+        return new StIfStatement(false, condition, then, els);
+    }
+
+    public static StStatement $if(StExpression condition, StStatement statement) {
+        return $if(condition, statement, null);
+    }
+
+    public static StStatement $ifNot(StExpression condition, StStatement then, StStatement els) {
+        return new StIfStatement(true, condition, then, els);
+    }
+
+    public static StStatement $ifNot(StExpression condition, StStatement statement) {
+        return $ifNot(condition, statement, null);
+    }
+
+    public static StStatement $ifNull(StExpression expression, StStatement then, StStatement els) {
+        return new StIfNullStatement(false, expression, then, els);
+    }
+
+    public static StStatement $ifNotNull(StExpression expression, StStatement then, StStatement els) {
+        return new StIfNullStatement(true, expression, then, els);
+    }
+
+    /*
+     ********************************************************************************
+     *                                 EXPRESSIONS                                  *
+     ********************************************************************************
+     */
+
+    /*
+     ********************************************************************************
+     *                                 INVOCATIONS                                  *
+     ********************************************************************************
+     */
+
     public static StMethodCallExpression $invokeSpecialMethod(String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression left, StExpression[] parameters) {
         return $invokeMethod(InvokeType.SPECIAL, declaringClassName, name, parameterTypes, returnType, left, parameters);
@@ -169,34 +267,6 @@ public class Dsl {
 
     private static StMethodCallExpression $invokeMethod(InvokeType invokeType, Method method, StExpression left, StExpression[] parameters) {
         return new StMethodCallExpression(left, method, parameters, invokeType);
-    }
-
-    public static String $ofClass(Class<?> clazz) {
-        return clazz.getName();
-    }
-
-    public static String $ofClass(String name) {
-        return name;
-    }
-
-    public static StExpression $on(StExpression expression) {
-        return expression;
-    }
-
-    public static StExpression $of(StExpression expression) {
-        return expression;
-    }
-
-    public static StExpression $value(StExpression expression) {
-        return expression;
-    }
-
-    public static StExpression[] $withParameters(StExpression... parameters) {
-        return parameters;
-    }
-
-    public static StExpression[] $withoutParameters() {
-        return EMPTY_EXPRESSIONS;
     }
 
     public static StExpression $this() {
@@ -262,9 +332,53 @@ public class Dsl {
         return clazz;
     }
 
-    public static StExpression $int(int index) {
-        return new StIntConstantExpression(index);
+    /*
+     ********************************************************************************
+     *                                  CONSTANTS                                   *
+     ********************************************************************************
+     */
+
+    public static StExpression $bool(boolean flag) {
+        return new StIntConstantExpression(flag ? 1 : 0, int.class);
     }
+
+    public static StExpression $byte(byte index) {
+        return new StIntConstantExpression(index, byte.class);
+    }
+
+    public static StExpression $char(char character) {
+        return new StIntConstantExpression(0x0000FFFF & (int) character, int.class);
+    }
+
+    public static StExpression $short(short index) {
+        return new StIntConstantExpression(index, short.class);
+    }
+
+    public static StExpression $int(int index) {
+        return new StIntConstantExpression(index, int.class);
+    }
+
+    public static StExpression $long(Long number) {
+        return new StConstant(number);
+    }
+
+    public static StExpression $float(Float number) {
+        return new StConstant(number);
+    }
+
+    public static StExpression $double(Double number) {
+        return new StConstant(number);
+    }
+
+    public static StExpression $string(String string) {
+        return new StConstant(string);
+    }
+
+    /*
+     ********************************************************************************
+     *                                   ARRAYS                                     *
+     ********************************************************************************
+     */
 
     public static StExpression $arrayElement(StExpression array, StExpression index) {
         return new StArrayElementExpression(array, index);
@@ -276,21 +390,5 @@ public class Dsl {
 
     public static StExpression $array(Class<?> type, StExpression[] elements) {
         return new StArrayExpression(type, elements);
-    }
-
-    public static StField[] $fields(List<StField> fields) {
-        return fields.toArray(new StField[0]);
-    }
-
-    public static StMethod[] $methods(List<StMethod> methods) {
-        return methods.toArray(new StMethod[0]);
-    }
-
-    public static StStatement[] $statements(List<StStatement> statements) {
-        return statements.toArray(EMPTY_STATEMENTS);
-    }
-
-    public static StExpression[] $expressions(List<StExpression> expressions) {
-        return expressions.toArray(EMPTY_EXPRESSIONS);
     }
 }

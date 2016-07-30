@@ -14,4 +14,8 @@ public class ImpossibleError extends Error {
     public ImpossibleError(Throwable cause) {
         super(MESSAGE, cause);
     }
+
+    public ImpossibleError(String message) {
+        super(message);
+    }
 }

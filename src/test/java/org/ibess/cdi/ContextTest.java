@@ -1,6 +1,9 @@
 package org.ibess.cdi;
 
-import org.ibess.cdi.annotations.*;
+import org.ibess.cdi.annotations.Inject;
+import org.ibess.cdi.annotations.NotNull;
+import org.ibess.cdi.annotations.Scoped;
+import org.ibess.cdi.annotations.Trimmed;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
 import org.ibess.cdi.internal.$Context;
@@ -110,7 +113,7 @@ public class ContextTest {
 
     @Scoped static class WithConstructor {
         int value;
-        @Constructor public void constructor(Singleton param) {
+        @Inject public void constructor(Singleton param) {
             value = 15;
         }
     }
@@ -270,5 +273,17 @@ public class ContextTest {
     public void primitives() {
         Primitives primitives = context.lookup(Primitives.class);
         primitives.f(false, (byte) 0, '\0', (short) 0, 0, 0L, 0f, 0d);
+    }
+
+    @Scoped static class InjectedParameter {
+        public Class<String> f(@NotNull @Inject InjectedClass<String, List<String>> injected) {
+            return injected.clazz;
+        }
+    }
+
+    @Test
+    public void injectedParameter() {
+        InjectedParameter injectedParameter = context.lookup(InjectedParameter.class);
+        assertEquals(String.class, injectedParameter.f(null));
     }
 }

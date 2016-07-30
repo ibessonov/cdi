@@ -5,9 +5,11 @@ package org.ibess.cdi.runtime.st;
  */
 public class StIntConstantExpression implements StExpression {
     public final int index;
+    public final Class type;
 
-    public StIntConstantExpression(int index) {
+    public StIntConstantExpression(int index, Class type) {
         this.index = index;
+        this.type = type;
     }
 
     @Override

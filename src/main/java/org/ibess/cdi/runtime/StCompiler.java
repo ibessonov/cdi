@@ -6,7 +6,7 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
 
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
@@ -26,7 +26,8 @@ public class StCompiler implements StVisitor {
     private MethodVisitor mv;
     private Class<?>[] parameters;
     private int[] offsets;
-    private final List<Label> hooks = new LinkedList<>();
+    private Class<?> returnType;
+    private final List<Label> hooks = new ArrayList<>();
 
     public static byte[] compile(StClass clazz) {
         return new StCompiler().compile0(clazz);
@@ -94,7 +95,9 @@ public class StCompiler implements StVisitor {
             offsets[i] = offsets[i - 1] + 1
                     + (parameters[i - 1] == long.class || parameters[i - 1] == double.class ? 1 : 0);
         }
+        this.returnType = method.returnType;
         method.statement.accept(this);
+        this.returnType = null;
         offsets = null;
         parameters = null;
 
@@ -117,7 +120,7 @@ public class StCompiler implements StVisitor {
     public void visitReturnStatement(StReturnStatement returnStatement) {
         returnStatement.expression.accept(this);
         if (hooks.isEmpty()) {
-            mv.visitInsn(ARETURN); // Object only
+            mv.visitInsn(returnOpcode(returnType));
         } else {
             mv.visitJumpInsn(GOTO, hooks.get(0));
         }
@@ -143,6 +146,42 @@ public class StCompiler implements StVisitor {
         paramAssignmentStatement.expression.accept(this);
         int offset = offsets[paramAssignmentStatement.index];
         mv.visitVarInsn(storeOpcode(parameters[paramAssignmentStatement.index]), offset + 1);
+    }
+
+    @Override
+    public void visitIfStatement(StIfStatement ifStatement) {
+        ifStatement.condition.accept(this);
+        Label elseLabel = new Label();
+        mv.visitJumpInsn(ifStatement.negate ? IFEQ : IFNE, elseLabel);
+        ifStatement.then.accept(this);
+
+        if (ifStatement.els == null) {
+            mv.visitLabel(elseLabel);
+        } else {
+            Label endLabel = new Label();
+            mv.visitJumpInsn(GOTO, endLabel);
+            mv.visitLabel(elseLabel);
+            ifStatement.els.accept(this);
+            mv.visitLabel(endLabel);
+        }
+    }
+
+    @Override
+    public void visitIfNullStatement(StIfNullStatement ifNullStatement) {
+        ifNullStatement.expression.accept(this);
+        Label elseLabel = new Label();
+        mv.visitJumpInsn(ifNullStatement.negate ? IFNULL : IFNONNULL, elseLabel);
+        ifNullStatement.then.accept(this);
+
+        if (ifNullStatement.els == null) {
+            mv.visitLabel(elseLabel);
+        } else {
+            Label endLabel = new Label();
+            mv.visitJumpInsn(GOTO, endLabel);
+            mv.visitLabel(elseLabel);
+            ifNullStatement.els.accept(this);
+            mv.visitLabel(endLabel);
+        }
     }
 
     @Override
@@ -219,20 +258,31 @@ public class StCompiler implements StVisitor {
     public void visitArrayElementExpression(StArrayElementExpression arrayElementExpression) {
         arrayElementExpression.array.accept(this);
         arrayElementExpression.index.accept(this);
-        mv.visitInsn(AALOAD);
+        mv.visitInsn(AALOAD); // Object only :(
     }
 
     @Override
     public void visitIntConstantExpression(StIntConstantExpression intConstantExpression) {
-        visitIntConstantExpression(intConstantExpression.index);
+        visitIntConstantExpression(intConstantExpression.index, intConstantExpression.type);
     }
 
-    private void visitIntConstantExpression(int index) {
-        if (index < 6) {
+    private void visitIntConstantExpression(int index, Class<?> type) {
+        if (index >= 0 && index < 6) {
             mv.visitInsn(ICONST_0 + index);
         } else {
-            mv.visitVarInsn(SIPUSH, index);
+            if (type == int.class) {
+                mv.visitLdcInsn(index);
+            } else if (type == byte.class) {
+                mv.visitIntInsn(BIPUSH, index);
+            } else {
+                mv.visitIntInsn(SIPUSH, index);
+            }
         }
+    }
+
+    @Override
+    public void visitConstant(StConstant constant) {
+        mv.visitLdcInsn(constant.value);
     }
 
     @Override
@@ -244,15 +294,20 @@ public class StCompiler implements StVisitor {
     @Override
     public void visitArrayExpression(StArrayExpression arrayExpression) {
         StExpression[] elements = arrayExpression.elements;
-        visitIntConstantExpression(elements.length);
-        mv.visitTypeInsn(ANEWARRAY, getInternalName(arrayExpression.type));
+        visitIntConstantExpression(elements.length, int.class);
+        Class<?> type = arrayExpression.type;
+        if (type.isPrimitive()) {
+            mv.visitIntInsn(NEWARRAY, newArrayTypeOpcode(type));
+        } else {
+            mv.visitTypeInsn(ANEWARRAY, getInternalName(type));
+        }
 
         int index = 0;
         for (StExpression element : elements) {
             mv.visitInsn(DUP);
-            visitIntConstantExpression(index++);
+            visitIntConstantExpression(index++, int.class);
             element.accept(this);
-            mv.visitInsn(AASTORE);
+            mv.visitInsn(astoreOpcode(type));
         }
     }
 
@@ -303,12 +358,61 @@ public class StCompiler implements StVisitor {
         }
     }
 
+    private static int returnOpcode(Class<?> type) {
+        if (type == null || !type.isPrimitive()) return ARETURN;
+        switch (type.getName()) {
+            case "long":   return LRETURN;
+            case "float":  return FRETURN;
+            case "double": return DRETURN;
+            default:       return IRETURN;
+        }
+    }
+
+    private int astoreOpcode(Class<?> type) {
+        if (!type.isPrimitive()) return AASTORE;
+        switch (type.getName()) {
+            case "boolean":
+            case "byte"   : return BASTORE;
+            case "char"   : return CASTORE;
+            case "short"  : return SASTORE;
+            case "int"    : return IASTORE;
+            case "long"   : return LASTORE;
+            case "float"  : return FASTORE;
+            default       : return DASTORE;
+        }
+    }
+
+    private int newArrayTypeOpcode(Class<?> type) {
+        switch (type.getName()) {
+            case "boolean": return T_BOOLEAN;
+            case "byte"   : return T_BYTE;
+            case "char"   : return T_CHAR;
+            case "short"  : return T_SHORT;
+            case "int"    : return T_INT;
+            case "long"   : return T_LONG;
+            case "float"  : return T_FLOAT;
+            default       : return T_DOUBLE;
+        }
+    }
+
     private static String internal(String name) {
         return name.replace('.', '/');
     }
 
     private static String descriptor(String name) {
         String internal = internal(name);
-        return internal.startsWith("[") ? internal : "L" + internal + ";";
+        if (internal.startsWith("[")) return internal;
+
+        switch (internal) {
+            case "boolean": return "Z";
+            case "byte"   : return "B";
+            case "char"   : return "C";
+            case "short"  : return "S";
+            case "int"    : return "I";
+            case "long"   : return "J";
+            case "float"  : return "F";
+            case "double" : return "D";
+        }
+        return "L" + internal + ";";
     }
 }

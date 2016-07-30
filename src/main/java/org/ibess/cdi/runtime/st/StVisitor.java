@@ -35,6 +35,8 @@ public interface StVisitor {
 
     void visitIntConstantExpression(StIntConstantExpression intConstantExpression);
 
+    void visitConstant(StConstant constant);
+
     void visitCastExpression(StCastExpression castExpression);
 
     void visitArrayExpression(StArrayExpression arrayExpression);
@@ -50,4 +52,8 @@ public interface StVisitor {
     void visitReturnHookStatement(StReturnHookStatement returnHookStatement);
 
     void visitSwapExpression(StSwapExpression swapExpression);
+
+    void visitIfStatement(StIfStatement ifStatement);
+
+    void visitIfNullStatement(StIfNullStatement ifNullStatement);
 }
