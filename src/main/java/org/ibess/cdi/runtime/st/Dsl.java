@@ -146,6 +146,22 @@ public class Dsl {
         return EMPTY_EXPRESSIONS;
     }
 
+    public static Class<?> $toClass(Class<?> clazz) {
+        return clazz;
+    }
+
+    public static Class<?> $withType(Class<?> clazz) {
+        return clazz;
+    }
+
+    public static StStatement $then(StStatement statement) {
+        return statement;
+    }
+
+    public static StStatement $else(StStatement statement) {
+        return statement;
+    }
+
     /*
      ********************************************************************************
      *                                  METHOD BODY                                 *
@@ -154,6 +170,10 @@ public class Dsl {
 
     public static StStatement $scope(StStatement... statements) {
         return new StScopeStatement(statements);
+    }
+
+    public static StStatement $return(boolean flag) {
+        return $return($bool(flag));
     }
 
     public static StStatement $return(StExpression expression) {
@@ -194,7 +214,7 @@ public class Dsl {
     }
 
     public static StStatement $if(StExpression condition, StStatement then, StStatement els) {
-        return new StIfStatement(false, condition, then, els);
+        return new StIfStatement(false, false, condition, then, els);
     }
 
     public static StStatement $if(StExpression condition, StStatement statement) {
@@ -202,7 +222,7 @@ public class Dsl {
     }
 
     public static StStatement $ifNot(StExpression condition, StStatement then, StStatement els) {
-        return new StIfStatement(true, condition, then, els);
+        return new StIfStatement(false, true, condition, then, els);
     }
 
     public static StStatement $ifNot(StExpression condition, StStatement statement) {
@@ -210,11 +230,11 @@ public class Dsl {
     }
 
     public static StStatement $ifNull(StExpression expression, StStatement then, StStatement els) {
-        return new StIfNullStatement(false, expression, then, els);
+        return new StIfStatement(true, false, expression, then, els);
     }
 
     public static StStatement $ifNotNull(StExpression expression, StStatement then, StStatement els) {
-        return new StIfNullStatement(true, expression, then, els);
+        return new StIfStatement(true, true, expression, then, els);
     }
 
     /*
@@ -269,6 +289,16 @@ public class Dsl {
         return new StMethodCallExpression(left, method, parameters, invokeType);
     }
 
+    public static StExpression $cast(Class<?> clazz, StExpression expression) {
+        return new StCastExpression(clazz, expression);
+    }
+
+    /*
+     ********************************************************************************
+     *                             OBJECTS REFERENCES                               *
+     ********************************************************************************
+     */
+
     public static StExpression $this() {
         return $this;
     }
@@ -277,20 +307,8 @@ public class Dsl {
         return new StGetParameterExpression(index);
     }
 
-    public static StExpression $new(Class<?> clazz) {
-        return new StNewExpression(clazz.getName());
-    }
-
-    public static StExpression $new(String className) {
-        return new StNewExpression(className);
-    }
-
     public static StExpression $dup() {
         return $dup;
-    }
-
-    public static StExpression $cast(Class<?> clazz, StExpression expression) {
-        return new StCastExpression(clazz, expression);
     }
 
     public static StExpression $swap() {
@@ -301,10 +319,6 @@ public class Dsl {
         return $null;
     }
 
-    public static Class<?> $toClass(Class<?> clazz) {
-        return clazz;
-    }
-
     public static StExpression $class(Class<?> clazz) {
         if (clazz.isPrimitive()) {
             return $getStaticField(box(clazz).getName(), "TYPE", Class.class);
@@ -312,12 +326,12 @@ public class Dsl {
         return new StClassExpression(clazz);
     }
 
-    public static StExpression $myField(String name, Class<?> type) {
-        return $getField(null, name, type, $this);
+    public static StExpression $myField(String name) {
+        return new StGetFieldExpression($this, false, name);
     }
 
-    public static StExpression $myStaticField(String name, Class<?> type) {
-        return new StGetFieldExpression(null, true, null, type, name);
+    public static StExpression $myStaticField(String name) {
+        return new StGetFieldExpression($this, true, name);
     }
 
     public static StExpression $getField(String declaringClassName, String name, Class<?> type, StExpression expression) {
@@ -328,8 +342,18 @@ public class Dsl {
         return new StGetFieldExpression(null, true, declaringClassName, type, name);
     }
 
-    public static Class<?> $withType(Class<?> clazz) {
-        return clazz;
+    /*
+     ********************************************************************************
+     *                                CONSTRUCTORS                                  *
+     ********************************************************************************
+     */
+
+    public static StExpression $new(Class<?> clazz) {
+        return new StNewExpression(clazz.getName());
+    }
+
+    public static StExpression $new(String className) {
+        return new StNewExpression(className);
     }
 
     /*
@@ -342,36 +366,36 @@ public class Dsl {
         return new StIntConstantExpression(flag ? 1 : 0, int.class);
     }
 
-    public static StExpression $byte(byte index) {
-        return new StIntConstantExpression(index, byte.class);
+    public static StExpression $byte(byte value) {
+        return new StIntConstantExpression(value, byte.class);
     }
 
     public static StExpression $char(char character) {
         return new StIntConstantExpression(0x0000FFFF & (int) character, int.class);
     }
 
-    public static StExpression $short(short index) {
-        return new StIntConstantExpression(index, short.class);
+    public static StExpression $short(short value) {
+        return new StIntConstantExpression(value, short.class);
     }
 
-    public static StExpression $int(int index) {
-        return new StIntConstantExpression(index, int.class);
+    public static StExpression $int(int value) {
+        return new StIntConstantExpression(value, int.class);
     }
 
-    public static StExpression $long(Long number) {
-        return new StConstant(number);
+    public static StExpression $long(Long value) {
+        return new StConstant(value);
     }
 
-    public static StExpression $float(Float number) {
-        return new StConstant(number);
+    public static StExpression $float(Float value) {
+        return new StConstant(value);
     }
 
-    public static StExpression $double(Double number) {
-        return new StConstant(number);
+    public static StExpression $double(Double value) {
+        return new StConstant(value);
     }
 
-    public static StExpression $string(String string) {
-        return new StConstant(string);
+    public static StExpression $string(String value) {
+        return new StConstant(value);
     }
 
     /*
@@ -386,6 +410,10 @@ public class Dsl {
 
     public static StExpression $withIndex(StExpression expression) {
         return expression;
+    }
+
+    public static StExpression $withIndex(int index) {
+        return $int(index);
     }
 
     public static StExpression $array(Class<?> type, StExpression[] elements) {

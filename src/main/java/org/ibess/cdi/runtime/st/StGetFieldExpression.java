@@ -13,6 +13,11 @@ public class StGetFieldExpression implements StExpression {
         this.field = new FieldInfo(isStatic, declaringClassName, fieldClass.getName(), fieldName);
     }
 
+    public StGetFieldExpression(StExpression left, boolean isStatic, String fieldName) {
+        this.left = left;
+        this.field = new FieldInfo(isStatic, null, null, fieldName);
+    }
+
     @Override
     public void accept(StVisitor visitor) {
         visitor.visitGetFieldExpression(this);

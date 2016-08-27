@@ -45,6 +45,8 @@ final class InheritorGenerator {
 
     private static final Method transform;
 
+    private static final Method remove;
+
     static {
         try {
             $lookup    = $Context.class.getDeclaredMethod("$lookup",    $Descriptor.class);
@@ -56,13 +58,15 @@ final class InheritorGenerator {
             $0 = $Descriptor.class.getDeclaredMethod("$0", Class.class);
 
             transform = ValueTransformer.class.getDeclaredMethod("transform", Object.class, Class.class, Annotation.class);
+
+            remove = Map.class.getDeclaredMethod("remove", Object.class);
         } catch (NoSuchMethodException e) {
             throw new ExceptionInInitializerError(e);
         }
     }
 
     private final ContextImpl context;
-    private final Map<Class, ClassInfo> cache = new HashMap<>();
+    private final Map<Class, ClassInfo> registry = new HashMap<>();
 
     private final String postfix;
 
@@ -72,11 +76,11 @@ final class InheritorGenerator {
     }
 
     public Class getSubclass(Class clazz) {
-        ClassInfo ci = cache.get(clazz);
+        ClassInfo ci = registry.get(clazz);
         if (ci == null || ci.compiledClass == null) {
             synchronized (InheritorGenerator.class) {
                 if (ci == null) {
-                    ci = cache.computeIfAbsent(clazz, this::getClassInfo);
+                    ci = registry.computeIfAbsent(clazz, this::getClassInfo);
                 }
                 if (ci.compiledClass == null) {
                     compileWithDependencies(ci, new HashSet<>());
@@ -213,6 +217,10 @@ final class InheritorGenerator {
                 initStaticFields.add($assignStatic($named(field.name), $ofClass(inheritorClassName), $withType(field.type),
                     $value(AnnotationGenerator.getExpression((Annotation) field.value))
                 ));
+            } else {
+                initStaticFields.add($assignStatic($named(field.name), $ofClass(inheritorClassName), $withType(field.type),
+                    $value(initFromTempStorage(field.type, field.value))
+                ));
             }
         }
 
@@ -258,6 +266,15 @@ final class InheritorGenerator {
         return ci;
     }
 
+    private StExpression initFromTempStorage(Class<?> clazz, Object value) {
+        String key = UUID.randomUUID().toString();
+        TempStorage.MAP.put(key, value);
+        return $cast(clazz, $invokeInterfaceMethod(remove,
+            $of($getStaticField($ofClass(TempStorage.class), $named("MAP"), $withType(Map.class))),
+            $withParameters($string(key))
+        ));
+    }
+
     private StExpression transformValue(ClassInfo ci, Collection<Annotation> annotations,
                                         StExpression expression, Class<?> type) {
         if (type.isPrimitive()) {
@@ -268,10 +285,8 @@ final class InheritorGenerator {
             String transformerField = ci.addStaticField(ValueTransformer.class, valueTransformer);
             String annotationField  = ci.addStaticField(Annotation.class, annotation);
             expression = $invokeInterfaceMethod(transform,
-                $on($myStaticField(transformerField, ValueTransformer.class)),
-                $withParameters(
-                    expression, $class(type), $myStaticField(annotationField, Annotation.class)
-                )
+                $on($myStaticField(transformerField)),
+                $withParameters(expression, $class(type), $myStaticField(annotationField))
             );
         }
         if (type.isPrimitive()) {
@@ -306,7 +321,7 @@ final class InheritorGenerator {
     private static StExpression getLookupExpression(ClassInfo ci, Type type) {
         if (type == Context.class) {
             ci.x.hasContext = true;
-            return $myField($named("$c"), $withType($Context.class));
+            return $myField($named("$c"));
         }
         if (type instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -329,7 +344,7 @@ final class InheritorGenerator {
             rawClass = (Class) ((ParameterizedType) type).getRawType();
         }
 
-        StExpression context = $myField($named("$c"), $withType($Context.class));
+        StExpression context = $myField($named("$c"));
         Method method;
         StExpression param;
         if (rawClass == null) {
@@ -356,14 +371,12 @@ final class InheritorGenerator {
             }
         }
 
-        return param instanceof StClassExpression // do not cast class object
-             ? $invokeInterfaceMethod(method, $on(context), $withParameters(param))
-             : $cast($toClass(rawClass), $invokeInterfaceMethod(method, $on(context), $withParameters(param)));
+        return $cast($toClass(rawClass), $invokeInterfaceMethod(method, $on(context), $withParameters(param)));
     }
 
     private static StExpression getTypeVariableDescriptor(ClassInfo ci, TypeVariable type) {
-        return $arrayElement($of($myField($named("$d"), $withType($Descriptor[].class))),
-                             $withIndex($int(ci.x.paramsIndex.get(type.getTypeName())))
+        return $arrayElement($of($myField($named("$d"))),
+                             $withIndex(ci.x.paramsIndex.get(type.getTypeName()))
         );
     }
 
@@ -395,7 +408,7 @@ final class InheritorGenerator {
                         }
 
                         if (optimize) {
-                            params.add($myField($named("$d"), $withType($Descriptor[].class)));
+                            params.add($myField($named("$d")));
                         } else {
                             StExpression[] elements = new StExpression[actualTypeArguments.length];
                             for (int i = 0, length = actualTypeArguments.length; i < length; i++) {
@@ -424,23 +437,13 @@ final class InheritorGenerator {
 
         dejaVu.add(ci);
         for (Class clazz : ci.x.dependsOn) {
-            ClassInfo info = cache.computeIfAbsent(clazz, this::getClassInfo);
+            ClassInfo info = registry.computeIfAbsent(clazz, this::getClassInfo);
             compileWithDependencies(info, dejaVu);
         }
         dejaVu.remove(ci);
 
         for (StClass stClass : ci.x.stClasses) {
             ci.compiledClass = defineClass(compile(stClass));
-        }
-
-        try {
-            for (ClassInfo.FieldInfo field : ci.x.staticFields.values()) {
-                if (!(field.value instanceof Annotation)) {
-                    ci.compiledClass.getDeclaredField(field.name).set(null, field.value);
-                }
-            }
-        } catch (IllegalAccessException | NoSuchFieldException e) {
-            throw new ImpossibleError(e);
         }
 
         ci.dispose();

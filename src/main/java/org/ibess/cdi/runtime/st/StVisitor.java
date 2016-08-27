@@ -54,6 +54,4 @@ public interface StVisitor {
     void visitSwapExpression(StSwapExpression swapExpression);
 
     void visitIfStatement(StIfStatement ifStatement);
-
-    void visitIfNullStatement(StIfNullStatement ifNullStatement);
 }

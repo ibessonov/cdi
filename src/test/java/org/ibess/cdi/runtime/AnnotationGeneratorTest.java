@@ -114,8 +114,13 @@ public class AnnotationGeneratorTest {
             assertEquals("single", annotation.notNullValue().value());
             assertEquals("multiple", annotation.notNullArrayValue()[0].value());
 
+            assertFalse(Proxy.isProxyClass(annotation.notNullValue().value().getClass()));
+            assertFalse(Proxy.isProxyClass(annotation.notNullArrayValue()[0].value().getClass()));
+
             assertEquals(Scope.SINGLETON, annotation.scopeValue());
             assertArrayEquals(new Scope[] { Scope.STATELESS }, annotation.scopeArrayValue());
+
+            assertEquals(TestingAnnotation.class, annotation.annotationType());
 
             try {
                 Method f = Annotated.class.getDeclaredMethod("f", Object.class);
@@ -126,6 +131,9 @@ public class AnnotationGeneratorTest {
 
                 assertEquals(annotation, proxyAnnotation);
                 assertEquals(proxyAnnotation, annotation);
+
+                assertEquals(proxyAnnotation.hashCode(), annotation.hashCode());
+                assertEquals(proxyAnnotation.toString(), annotation.toString());
             } catch (Exception t) {
                 fail(t.getMessage());
             }

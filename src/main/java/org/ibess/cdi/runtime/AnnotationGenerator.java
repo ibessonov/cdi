@@ -90,18 +90,18 @@ final class AnnotationGenerator {
             fieldTypes[i] = fields[i].type;
         }
 
-        StMethod[] methods = new StMethod[length + 4]; // hashCode, <init>, equals, toString
+        StMethod[] methods = new StMethod[length + 5]; // hashCode, <init>, equals, toString, annotationType
         for (int i = 0; i < length; i++) {
             StField field = fields[i];
             methods[i] = $method($named(field.name), $withoutParameterTypes(), $returns(field.type), $withBody(
-                $return($myField($named(field.name), $withType(field.type)))
+                $return($myField($named(field.name)))
             ));
         }
         methods[length] = $method($named("hashCode"), $withoutParameterTypes(), $returns(int.class), $withBody(
-            $return($myField($named("$hash"), $withType(int.class)))
+            $return($myField($named("$hash")))
         ));
         methods[length + 1] = $method($named("toString"), $withoutParameterTypes(), $returns(String.class), $withBody(
-            $return($myField($named("$str"), $withType(String.class)))
+            $return($myField($named("$str")))
         ));
         methods[length + 2] = $method($named("<init>"), $withParameterTypes(fieldTypes), $returnsNothing(), $withBody(
             $invoke($invokeSpecialMethod($ofClass(Object.class), $named("<init>"),
@@ -114,13 +114,16 @@ final class AnnotationGenerator {
             $if($invokeSpecialMethod($ofClass(Object.class), $named("equals"),
                 $withParameterTypes(Object.class), $returns(boolean.class),
                 $on($this), $withParameters($methodParam(0))
-            ), $return($bool(true))),
+            ), $then($return(true))),
             $ifNot($invokeVirtualMethod($ofClass(Class.class), $named("isInstance"),
                 $withParameterTypes(Object.class), $returns(boolean.class),
                 $on($class(clazz)), $withParameters($methodParam(0))
-            ), $return($bool(false))),
+            ), $then($return(false))),
             $scope(methodBodyForEquals(declaredMethods)),
-            $return($bool(true))
+            $return(true)
+        ));
+        methods[length + 4] = $method($named("annotationType"), $withoutParameterTypes(), $returns(Class.class), $withBody(
+            $return($class(clazz))
         ));
 
         StClass stClass = $class($named(className), $extends(Object.class), $implements(clazz),
@@ -139,6 +142,7 @@ final class AnnotationGenerator {
     }
 
     // dumb non-effective implementation
+    // still better then the one from AnnotationInvocationHandler
     private static StStatement[] methodBodyForEquals(Method[] methods) {
         StStatement[] statements = new StStatement[methods.length];
 
@@ -148,10 +152,10 @@ final class AnnotationGenerator {
             Class<?> annotation = method.getDeclaringClass();
             String name = method.getName();
 
-            StExpression parameterField = $invokeVirtualMethod(
+            StExpression parameterField = $invokeInterfaceMethod(
                 method, $on($cast($toClass(annotation), $methodParam(0))), $withoutParameters()
             );
-            StExpression myField = $myField($named(name), $withType(type));
+            StExpression myField = $myField($named(name));
 
             if (type.isPrimitive()) {
                 parameterField = box(type, parameterField);
@@ -163,12 +167,12 @@ final class AnnotationGenerator {
                 statements[i] = $ifNot($invokeStaticMethod($ofClass(Arrays.class), $named("equals"),
                     $withParameterTypes(arrayType, arrayType), $returns(boolean.class),
                     $withParameters(parameterField, myField)
-                ), $return($bool(false)));
+                ), $return(false));
             } else {
                 statements[i] = $ifNot($invokeVirtualMethod($ofClass(Object.class), $named("equals"),
                     $withParameterTypes(Object.class), $returns(boolean.class),
                     $on(parameterField), $withParameters(myField)
-                ), $return($bool(false)));
+                ), $return(false));
             }
         }
         return statements;
@@ -211,9 +215,7 @@ final class AnnotationGenerator {
                         break;
                 }
             } else {
-                for (int i = 0; i < length; i++) {
-                    elements[i] = getExpression0(Array.get(object, i));
-                }
+                for (int i = 0; i < length; i++) elements[i] = getExpression0(Array.get(object, i));
             }
             return $array(componentType, elements);
         }

@@ -131,19 +131,10 @@ public class StRecursiveVisitor implements StVisitor {
 
     @Override
     public void visitIfStatement(StIfStatement ifStatement) {
-        ifStatement.condition.accept(this);
+        ifStatement.expression.accept(this);
         ifStatement.then.accept(this);
         if (ifStatement.els != null) {
             ifStatement.els.accept(this);
-        }
-    }
-
-    @Override
-    public void visitIfNullStatement(StIfNullStatement ifNullStatement) {
-        ifNullStatement.expression.accept(this);
-        ifNullStatement.then.accept(this);
-        if (ifNullStatement.els != null) {
-            ifNullStatement.els.accept(this);
         }
     }
 }

@@ -11,5 +11,5 @@ public interface $CdiObject {
      * Injects all @Inject fields of this object and runs @Constructor method with injected parameters if its present.
      * Should be called only once for every created $CdiObject instance.
      */
-    default void $construct() {}
+    void $construct();
 }

@@ -5,14 +5,16 @@ package org.ibess.cdi.runtime.st;
  */
 public class StIfStatement implements StStatement {
 
+    public final boolean compareToNull;
     public final boolean negate;
-    public final StExpression condition;
+    public final StExpression expression;
     public final StStatement then;
     public final StStatement els;
 
-    public StIfStatement(boolean negate, StExpression condition, StStatement then, StStatement els) {
+    public StIfStatement(boolean compareToNull, boolean negate, StExpression expression, StStatement then, StStatement els) {
+        this.compareToNull = compareToNull;
         this.negate = negate;
-        this.condition = condition;
+        this.expression = expression;
         this.then = then;
         this.els = els;
     }

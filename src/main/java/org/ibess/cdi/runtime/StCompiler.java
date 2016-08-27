@@ -7,7 +7,9 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
@@ -23,6 +25,7 @@ public class StCompiler implements StVisitor {
 
     private ClassWriter cw;
     private String internalClassName;
+    private final Map<String, Class<?>> fieldTypes = new HashMap<>();
     private MethodVisitor mv;
     private Class<?>[] parameters;
     private int[] offsets;
@@ -36,11 +39,10 @@ public class StCompiler implements StVisitor {
     private byte[] compile0(StClass clazz) {
         cw = new ClassWriter(COMPUTE_MAXS | COMPUTE_FRAMES);
         clazz.accept(this);
-        try {
-            return cw.toByteArray();
-        } finally {
-            cw = null;
-        }
+
+        byte[] result = cw.toByteArray();
+        cw = null;
+        return result;
     }
 
     @Override
@@ -73,7 +75,8 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitField(StField field) {
-        int modifiers = field.isStatic ? ACC_PUBLIC | ACC_STATIC : ACC_PRIVATE | ACC_FINAL;
+        int modifiers = field.isStatic ? ACC_PUBLIC | ACC_STATIC | ACC_FINAL : ACC_PRIVATE | ACC_FINAL;
+        fieldTypes.put(field.name, field.type);
         cw.visitField(modifiers, field.name, getDescriptor(field.type), null, null).visitEnd();
     }
 
@@ -104,7 +107,7 @@ public class StCompiler implements StVisitor {
         if (returnType == VOID_TYPE) {
             mv.visitInsn(RETURN);
         }
-        mv.visitMaxs(0, 0);
+        mv.visitMaxs(-1, -1);
         mv.visitEnd();
         mv = null;
     }
@@ -150,9 +153,12 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitIfStatement(StIfStatement ifStatement) {
-        ifStatement.condition.accept(this);
+        ifStatement.expression.accept(this);
         Label elseLabel = new Label();
-        mv.visitJumpInsn(ifStatement.negate ? IFEQ : IFNE, elseLabel);
+        int opcode = ifStatement.compareToNull
+                ? (ifStatement.negate ? IFNULL : IFNONNULL) //?
+                : (ifStatement.negate ? IFNE : IFEQ);
+        mv.visitJumpInsn(opcode, elseLabel);
         ifStatement.then.accept(this);
 
         if (ifStatement.els == null) {
@@ -162,24 +168,6 @@ public class StCompiler implements StVisitor {
             mv.visitJumpInsn(GOTO, endLabel);
             mv.visitLabel(elseLabel);
             ifStatement.els.accept(this);
-            mv.visitLabel(endLabel);
-        }
-    }
-
-    @Override
-    public void visitIfNullStatement(StIfNullStatement ifNullStatement) {
-        ifNullStatement.expression.accept(this);
-        Label elseLabel = new Label();
-        mv.visitJumpInsn(ifNullStatement.negate ? IFNULL : IFNONNULL, elseLabel);
-        ifNullStatement.then.accept(this);
-
-        if (ifNullStatement.els == null) {
-            mv.visitLabel(elseLabel);
-        } else {
-            Label endLabel = new Label();
-            mv.visitJumpInsn(GOTO, endLabel);
-            mv.visitLabel(elseLabel);
-            ifNullStatement.els.accept(this);
             mv.visitLabel(endLabel);
         }
     }
@@ -204,8 +192,11 @@ public class StCompiler implements StVisitor {
         String internalClassName = field.declaringClassName == null
                                  ? this.internalClassName
                                  : internal(field.declaringClassName);
+        String fieldClassName = field.declaringClassName == null
+                              ? fieldTypes.get(field.name).getName()
+                              : field.className;
         mv.visitFieldInsn(field.isStatic ? GETSTATIC : GETFIELD, internalClassName,
-                          field.name, descriptor(field.className)
+                          field.name, descriptor(fieldClassName)
         );
     }
 
@@ -236,13 +227,7 @@ public class StCompiler implements StVisitor {
             parameter.accept(this);
         }
 
-        int opcode = -1;
-        switch (methodCallExpression.invokeType) {
-            case INTERFACE: opcode = INVOKEINTERFACE; break;
-            case SPECIAL:   opcode = INVOKESPECIAL;   break;
-            case VIRTUAL:   opcode = INVOKEVIRTUAL;   break;
-            case STATIC:    opcode = INVOKESTATIC;    break;
-        }
+        int opcode = getInvokeMethodOpcode(methodCallExpression.invokeType);
 
         Class<?>[] params = methodCallExpression.paramTypes;
         Type[] paramTypes = new Type[params.length];
@@ -336,6 +321,15 @@ public class StCompiler implements StVisitor {
         returnHookStatement.statement.accept(this);
         mv.visitLabel(hooks.remove(0));
         returnHookStatement.hook.accept(this);
+    }
+
+    private int getInvokeMethodOpcode(InvokeType invokeType) {
+        switch (invokeType) {
+            case INTERFACE: return INVOKEINTERFACE;
+            case SPECIAL:   return INVOKESPECIAL;
+            case VIRTUAL:   return INVOKEVIRTUAL;
+            default:        return INVOKESTATIC;
+        }
     }
 
     private static int storeOpcode(Class<?> type) {
