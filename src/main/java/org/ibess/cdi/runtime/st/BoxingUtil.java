@@ -54,21 +54,21 @@ public final class BoxingUtil {
     public static StExpression box(Class<?> primitive, StExpression expression) {
         switch (primitive.getName()) {
             case "boolean":
-                return $invokeStaticMethod(zValueOf, $withParameters(expression));
+                return _invokeStaticMethod(zValueOf, _withParameters(expression));
             case "byte":
-                return $invokeStaticMethod(bValueOf, $withParameters(expression));
+                return _invokeStaticMethod(bValueOf, _withParameters(expression));
             case "char":
-                return $invokeStaticMethod(cValueOf, $withParameters(expression));
+                return _invokeStaticMethod(cValueOf, _withParameters(expression));
             case "short":
-                return $invokeStaticMethod(sValueOf, $withParameters(expression));
+                return _invokeStaticMethod(sValueOf, _withParameters(expression));
             case "int":
-                return $invokeStaticMethod(iValueOf, $withParameters(expression));
+                return _invokeStaticMethod(iValueOf, _withParameters(expression));
             case "long":
-                return $invokeStaticMethod(jValueOf, $withParameters(expression));
+                return _invokeStaticMethod(jValueOf, _withParameters(expression));
             case "float":
-                return $invokeStaticMethod(fValueOf, $withParameters(expression));
+                return _invokeStaticMethod(fValueOf, _withParameters(expression));
             case "double":
-                return $invokeStaticMethod(dValueOf, $withParameters(expression));
+                return _invokeStaticMethod(dValueOf, _withParameters(expression));
         }
         return expression;
     }
@@ -91,21 +91,21 @@ public final class BoxingUtil {
     public static StExpression unbox(Class<?> primitive, StExpression expression) {
         switch (primitive.getName()) {
             case "boolean":
-                return $invokeVirtualMethod(zValue, $cast(Boolean  .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(zValue, _cast(Boolean  .class, expression), _withoutParameters());
             case "byte":
-                return $invokeVirtualMethod(bValue, $cast(Byte     .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(bValue, _cast(Byte     .class, expression), _withoutParameters());
             case "char":
-                return $invokeVirtualMethod(cValue, $cast(Character.class, expression), $withoutParameters());
+                return _invokeVirtualMethod(cValue, _cast(Character.class, expression), _withoutParameters());
             case "short":
-                return $invokeVirtualMethod(sValue, $cast(Short    .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(sValue, _cast(Short    .class, expression), _withoutParameters());
             case "int":
-                return $invokeVirtualMethod(iValue, $cast(Integer  .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(iValue, _cast(Integer  .class, expression), _withoutParameters());
             case "long":
-                return $invokeVirtualMethod(jValue, $cast(Long     .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(jValue, _cast(Long     .class, expression), _withoutParameters());
             case "float":
-                return $invokeVirtualMethod(fValue, $cast(Float    .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(fValue, _cast(Float    .class, expression), _withoutParameters());
             case "double":
-                return $invokeVirtualMethod(dValue, $cast(Double   .class, expression), $withoutParameters());
+                return _invokeVirtualMethod(dValue, _cast(Double   .class, expression), _withoutParameters());
         }
         return expression;
     }

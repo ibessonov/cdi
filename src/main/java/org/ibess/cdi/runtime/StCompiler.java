@@ -325,40 +325,32 @@ public class StCompiler implements StVisitor {
 
     private int getInvokeMethodOpcode(InvokeType invokeType) {
         switch (invokeType) {
-            case INTERFACE: return INVOKEINTERFACE;
-            case SPECIAL:   return INVOKESPECIAL;
+            case STATIC:    return INVOKESTATIC;
             case VIRTUAL:   return INVOKEVIRTUAL;
-            default:        return INVOKESTATIC;
+            case SPECIAL:   return INVOKESPECIAL;
+            default:        return INVOKEINTERFACE;
         }
     }
 
     private static int storeOpcode(Class<?> type) {
-        if (!type.isPrimitive()) return ASTORE;
-        switch (type.getName()) {
-            case "long":   return LSTORE;
-            case "float":  return FSTORE;
-            case "double": return DSTORE;
-            default:       return ISTORE;
-        }
+        return ISTORE + opcodeOffset(type);
     }
 
     private static int loadOpcode(Class<?> type) {
-        if (!type.isPrimitive()) return ALOAD;
-        switch (type.getName()) {
-            case "long":   return LLOAD;
-            case "float":  return FLOAD;
-            case "double": return DLOAD;
-            default:       return ILOAD;
-        }
+        return ILOAD + opcodeOffset(type);
     }
 
     private static int returnOpcode(Class<?> type) {
-        if (type == null || !type.isPrimitive()) return ARETURN;
+        return IRETURN + opcodeOffset(type);
+    }
+
+    private static int opcodeOffset(Class<?> type) {
+        if (type == null || !type.isPrimitive()) return 4;
         switch (type.getName()) {
-            case "long":   return LRETURN;
-            case "float":  return FRETURN;
-            case "double": return DRETURN;
-            default:       return IRETURN;
+            case "long":   return 1;
+            case "float":  return 2;
+            case "double": return 3;
+            default:       return 0;
         }
     }
 

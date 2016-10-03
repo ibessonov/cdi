@@ -24,5 +24,9 @@ public interface Context {
     static Context createContext(Extension... extensions) {
         return new ContextImpl(extensions);
     }
+
+    static <T> T auto() {
+        return null;
+    }
 }
 

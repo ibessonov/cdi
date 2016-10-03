@@ -138,7 +138,8 @@ public class AnnotationGeneratorTest {
                 fail(t.getMessage());
             }
 
-            return o;
+            assertNull(o);
+            return null;
         })).lookup(Annotated.class).f(null);
     }
 }

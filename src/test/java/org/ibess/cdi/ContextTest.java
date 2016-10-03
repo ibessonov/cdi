@@ -6,11 +6,8 @@ import org.ibess.cdi.annotations.Scoped;
 import org.ibess.cdi.annotations.Trimmed;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.internal.$CdiObject;
-import org.ibess.cdi.internal.$Context;
 import org.ibess.cdi.internal.$Descriptor;
-import org.ibess.cdi.runtime.ContextImpl;
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.Serializable;
@@ -19,27 +16,29 @@ import java.lang.annotation.Target;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static java.util.Arrays.asList;
+import static org.ibess.cdi.Context.auto;
 import static org.ibess.cdi.enums.Scope.SINGLETON;
 import static org.ibess.cdi.internal.$Descriptor.$;
 import static org.ibess.cdi.internal.$Descriptor.$0;
+import static org.ibess.cdi.runtime.st.BoxingUtil.box;
 import static org.ibess.cdi.runtime.st.Dsl.*;
+import static org.ibess.cdi.util.CollectionUtil.array;
 import static org.junit.Assert.*;
 
 /**
  * @author ibessonov
  */
 @SuppressWarnings("unchecked")
-public class ContextTest {
+public class ContextTest extends CdiTest {
 
-    private $Context context;
-
-    @Before
-    public void setUp() {
-        context = new ContextImpl(new TestExtension());
+    @Override
+    public Extension[] getExtensions() {
+        return array(new TestExtension());
     }
 
     @After
@@ -64,9 +63,10 @@ public class ContextTest {
                 }
             });
             registrar.registerMethodTransformer(Traced.class, (statement, method, annotation) ->
-                $returnHook(statement,
-                    $return($invokeStaticMethod($ofClass(TestExtension.class), $named("returned"),
-                        $withParameterTypes(Object.class), $returnsNothing(), $withParameters($dup)
+                _returnHook(statement,
+                    _return(_invokeStaticMethod(_ofClass(TestExtension.class), _named("returned"),
+                        _withParameterTypes(Object.class), _returnsNothing(),
+                        _withParameters(box(method.getReturnType(), _dup))
                     ))
                 )
             );
@@ -81,7 +81,6 @@ public class ContextTest {
     @Target(METHOD)
     @Retention(RUNTIME)
     public @interface Traced {
-        String value() default "";
     }
 
 
@@ -192,31 +191,31 @@ public class ContextTest {
         assertSame(String.class, holder.shitty.value.clazz);
     }
 
-//    @Scoped static abstract class Lazy<T> implements Supplier<T> {
-//
-//        private T value;
-//
-//        @Override
-//        public T get() {
-//            T val = value;
-//            if (val == null) {
-//                val = value = init();
-//            }
-//            return val;
-//        }
-//
-//        abstract T init();
-//    }
-//
-//    @Scoped static class WithLazy<T> {
-//        @Inject Lazy<T> lazy;
-//    }
-//
-//    @Test
-//    public void lazy() {
-//        WithLazy<Singleton> lazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
-//        assertSame(lazy.lazy.get(), lazy.lazy.get().instance);
-//    }
+    @Scoped static abstract class Lazy<T> implements Supplier<T> {
+
+        private T value;
+
+        @Override
+        public T get() {
+            T val = value;
+            if (val == null) {
+                val = value = init();
+            }
+            return val;
+        }
+
+        @NotNull abstract T init();
+    }
+
+    @Scoped static class WithLazy<T> {
+        @Inject Lazy<T> lazy;
+    }
+
+    @Test
+    public void lazy() {
+        WithLazy<Singleton> withLazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
+        assertSame(withLazy.lazy.get(), withLazy.lazy.get().instance);
+    }
 
     @Scoped static class ValueTransformers {
         void notNull(@NotNull("passed object is null") Object object) {}
@@ -241,8 +240,8 @@ public class ContextTest {
     }
 
     @Scoped static class MethodTransformers {
-        static Integer value = 0;
-        @Traced Integer nextInt() {
+        int value = 0;
+        @Traced int nextInt() {
             return value++;
         }
     }
@@ -255,7 +254,7 @@ public class ContextTest {
         assertEquals(asList(value0, value1), TestExtension.returned);
     }
 
-    @Test(timeout = 150)
+    @Test(timeout = 200)
     public void performance() {
         $Descriptor descriptor = $(InjectedClass.class, $0(String.class), $0(List.class));
         for (int i = 0; i < 100000; i++) {
@@ -284,6 +283,6 @@ public class ContextTest {
     @Test
     public void injectedParameter() {
         InjectedParameter injectedParameter = context.lookup(InjectedParameter.class);
-        assertEquals(String.class, injectedParameter.f(null));
+        assertEquals(String.class, injectedParameter.f(auto()));
     }
 }

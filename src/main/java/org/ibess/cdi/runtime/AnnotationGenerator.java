@@ -50,7 +50,7 @@ final class AnnotationGenerator {
         parameterTypes[length + 1] = String.class;
 
         StExpression[] parameters = new StExpression[length + 3];
-        parameters[0] = $dup;
+        parameters[0] = _dup;
         try {
             for (int i = 0; i < length; i++) {
                 parameters[i + 1] = getExpression0(info.methods[i].invoke(annotation));
@@ -58,12 +58,12 @@ final class AnnotationGenerator {
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new ImpossibleError(e);
         }
-        parameters[length + 1] = $int(annotation.hashCode());
-        parameters[length + 2] = $string(annotation.toString());
+        parameters[length + 1] = _int(annotation.hashCode());
+        parameters[length + 2] = _string(annotation.toString());
 
-        return $invokeSpecialMethod($ofClass(info.clazz), $named("<init>"),
-            $withParameterTypes(parameterTypes), $returnsNothing(),
-            $on($new(info.clazz)), $withParameters(parameters)
+        return _invokeSpecialMethod(_ofClass(info.clazz), _named("<init>"),
+            _withParameterTypes(parameterTypes), _returnsNothing(),
+            _on(_new(info.clazz)), _withParameters(parameters)
         );
     }
 
@@ -79,11 +79,11 @@ final class AnnotationGenerator {
         StField[] fields = new StField[length + 2]; // $hash, $str
         for (int i = 0; i < length; i++) {
             Method declaredMethod = declaredMethods[i];
-            fields[i] = $field(declaredMethod.getName(), declaredMethod.getReturnType());
+            fields[i] = _field(declaredMethod.getName(), declaredMethod.getReturnType());
         }
         // it's safer to store these values rather then cloning algorithms that may change over time
-        fields[length    ] = $field("$hash", int.class);
-        fields[length + 1] = $field("$str", String.class);
+        fields[length    ] = _field("hashCode", int.class);
+        fields[length + 1] = _field("toString", String.class);
 
         Class[] fieldTypes = new Class[fields.length];
         for (int i = 0; i < fields.length; i++) {
@@ -92,42 +92,41 @@ final class AnnotationGenerator {
 
         StMethod[] methods = new StMethod[length + 5]; // hashCode, <init>, equals, toString, annotationType
         for (int i = 0; i < length; i++) {
-            StField field = fields[i];
-            methods[i] = $method($named(field.name), $withoutParameterTypes(), $returns(field.type), $withBody(
-                $return($myField($named(field.name)))
+            methods[i] = _overrideMethod(declaredMethods[i], _withBody(
+                _return(_myField(_named(fields[i].name)))
             ));
         }
-        methods[length] = $method($named("hashCode"), $withoutParameterTypes(), $returns(int.class), $withBody(
-            $return($myField($named("$hash")))
+        methods[length] = _method(_named("hashCode"), _withoutParameterTypes(), _returns(int.class), _withBody(
+            _return(_myField(_named("hashCode")))
         ));
-        methods[length + 1] = $method($named("toString"), $withoutParameterTypes(), $returns(String.class), $withBody(
-            $return($myField($named("$str")))
+        methods[length + 1] = _method(_named("toString"), _withoutParameterTypes(), _returns(String.class), _withBody(
+            _return(_myField(_named("toString")))
         ));
-        methods[length + 2] = $method($named("<init>"), $withParameterTypes(fieldTypes), $returnsNothing(), $withBody(
-            $invoke($invokeSpecialMethod($ofClass(Object.class), $named("<init>"),
-                $withoutParameterTypes(), $returnsNothing(),
-                $on($this), $withoutParameters()
+        methods[length + 2] = _method(_named("<init>"), _withParameterTypes(fieldTypes), _returnsNothing(), _withBody(
+            _invoke(_invokeSpecialMethod(_ofClass(Object.class), _named("<init>"),
+                _withoutParameterTypes(), _returnsNothing(),
+                _on(_this), _withoutParameters()
             )),
-            $scope(methodBodyForInit(fields))
+            _scope(methodBodyForInit(fields))
         ));
-        methods[length + 3] = $method($named("equals"), $withParameterTypes(Object.class), $returns(boolean.class), $withBody(
-            $if($invokeSpecialMethod($ofClass(Object.class), $named("equals"),
-                $withParameterTypes(Object.class), $returns(boolean.class),
-                $on($this), $withParameters($methodParam(0))
-            ), $then($return(true))),
-            $ifNot($invokeVirtualMethod($ofClass(Class.class), $named("isInstance"),
-                $withParameterTypes(Object.class), $returns(boolean.class),
-                $on($class(clazz)), $withParameters($methodParam(0))
-            ), $then($return(false))),
-            $scope(methodBodyForEquals(declaredMethods)),
-            $return(true)
+        methods[length + 3] = _method(_named("equals"), _withParameterTypes(Object.class), _returns(boolean.class), _withBody(
+            _if(_invokeSpecialMethod(_ofClass(Object.class), _named("equals"),
+                _withParameterTypes(Object.class), _returns(boolean.class),
+                _on(_this), _withParameters(_methodParam(0))
+            ), _then(_return(true))),
+            _ifNot(_invokeVirtualMethod(_ofClass(Class.class), _named("isInstance"),
+                _withParameterTypes(Object.class), _returns(boolean.class),
+                _on(_class(clazz)), _withParameters(_methodParam(0))
+            ), _then(_return(false))),
+            _scope(methodBodyForEquals(declaredMethods)),
+            _return(true)
         ));
-        methods[length + 4] = $method($named("annotationType"), $withoutParameterTypes(), $returns(Class.class), $withBody(
-            $return($class(clazz))
+        methods[length + 4] = _method(_named("annotationType"), _withoutParameterTypes(), _returns(Class.class), _withBody(
+            _return(_class(clazz))
         ));
 
-        StClass stClass = $class($named(className), $extends(Object.class), $implements(clazz),
-            $withFields(fields), $withMethods(methods)
+        StClass stClass = _class(_named(className), _extends(Object.class), _implements(clazz),
+            _withFields(fields), _withMethods(methods)
         );
         return new Info(defineClass(compile(stClass)), declaredMethods);
     }
@@ -136,7 +135,7 @@ final class AnnotationGenerator {
         StStatement[] statements = new StStatement[fields.length];
         for (int i = 0; i < fields.length; i++) {
             StField field = fields[i];
-            statements[i] = $assignMyField($named(field.name), $withType(field.type), $value($methodParam(i)));
+            statements[i] = _assignMyField(_named(field.name), _withType(field.type), _value(_methodParam(i)));
         }
         return statements;
     }
@@ -152,10 +151,10 @@ final class AnnotationGenerator {
             Class<?> annotation = method.getDeclaringClass();
             String name = method.getName();
 
-            StExpression parameterField = $invokeInterfaceMethod(
-                method, $on($cast($toClass(annotation), $methodParam(0))), $withoutParameters()
+            StExpression parameterField = _invokeInterfaceMethod(
+                method, _on(_cast(_toClass(annotation), _methodParam(0))), _withoutParameters()
             );
-            StExpression myField = $myField($named(name));
+            StExpression myField = _myField(_named(name));
 
             if (type.isPrimitive()) {
                 parameterField = box(type, parameterField);
@@ -164,15 +163,15 @@ final class AnnotationGenerator {
 
             if (type.isArray()) {
                 Class<?> arrayType = type.getComponentType().isPrimitive() ? type : Object[].class;
-                statements[i] = $ifNot($invokeStaticMethod($ofClass(Arrays.class), $named("equals"),
-                    $withParameterTypes(arrayType, arrayType), $returns(boolean.class),
-                    $withParameters(parameterField, myField)
-                ), $return(false));
+                statements[i] = _ifNot(_invokeStaticMethod(_ofClass(Arrays.class), _named("equals"),
+                    _withParameterTypes(arrayType, arrayType), _returns(boolean.class),
+                    _withParameters(parameterField, myField)
+                ), _then(_return(false)));
             } else {
-                statements[i] = $ifNot($invokeVirtualMethod($ofClass(Object.class), $named("equals"),
-                    $withParameterTypes(Object.class), $returns(boolean.class),
-                    $on(parameterField), $withParameters(myField)
-                ), $return(false));
+                statements[i] = _ifNot(_invokeVirtualMethod(_ofClass(Object.class), _named("equals"),
+                    _withParameterTypes(Object.class), _returns(boolean.class),
+                    _on(parameterField), _withParameters(myField)
+                ), _then(_return(false)));
             }
         }
         return statements;
@@ -217,27 +216,27 @@ final class AnnotationGenerator {
             } else {
                 for (int i = 0; i < length; i++) elements[i] = getExpression0(Array.get(object, i));
             }
-            return $array(componentType, elements);
+            return _array(componentType, elements);
         }
         if (clazz.isPrimitive()) {
             switch (clazz.getName()) {
-                case "boolean": return $bool((Boolean) object);
-                case "byte"   : return $byte((Byte) object);
-                case "char"   : return $char((Character) object);
-                case "short"  : return $short((Short) object);
-                case "int"    : return $int((Integer) object);
-                case "long"   : return $long((Long) object);
-                case "float"  : return $float((Float) object);
-                case "double" : return $double((Double) object);
+                case "boolean": return _bool((Boolean) object);
+                case "byte"   : return _byte((Byte) object);
+                case "char"   : return _char((Character) object);
+                case "short"  : return _short((Short) object);
+                case "int"    : return _int((Integer) object);
+                case "long"   : return _long((Long) object);
+                case "float"  : return _float((Float) object);
+                case "double" : return _double((Double) object);
             }
         }
         if (clazz == String.class) {
-            return $string((String) object);
+            return _string((String) object);
         }
         if (clazz.isEnum()) {
             Enum enumObject = (Enum) object;
             Class enumClass = enumObject.getDeclaringClass();
-            return $getStaticField($ofClass(enumClass), $named(enumObject.name()), $withType(enumClass));
+            return _getStaticField(_ofClass(enumClass), _named(enumObject.name()), _withType(enumClass));
         }
         throw new ImpossibleError("Impossible value in annotation. Value class is " + clazz.getName());
     }
