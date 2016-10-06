@@ -9,7 +9,7 @@ public interface Context {
 
     /**
      * Retrieve object of given class from context. Generic classes are not supported here
-     * @param clazz Class of object to lookup
+     * @param clazz Class of object to lookup. Generic classes are not allowed here
      * @param <T> Generic parameter for type-safe code
      * @return Retrieved object casted to the required type
      */
@@ -25,6 +25,15 @@ public interface Context {
         return new ContextImpl(extensions);
     }
 
+    /**
+     * Method that should be used as an auto-injected parameter, for example <pre><code>
+     * void foo(@Inject Bar bar) {...}
+     * ...
+     * foo(auto());
+     * </code></pre>
+     * @param <T> Generic parameter for type-safe code
+     * @return null
+     */
     static <T> T auto() {
         return null;
     }

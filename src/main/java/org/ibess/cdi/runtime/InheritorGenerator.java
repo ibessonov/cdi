@@ -17,7 +17,6 @@ import org.ibess.cdi.util.CollectionUtil;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.lang.reflect.Modifier.*;
 import static java.util.Arrays.stream;
@@ -26,9 +25,9 @@ import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
 import static org.ibess.cdi.runtime.StCompiler.compile;
-import static org.ibess.cdi.runtime.st.BoxingUtil.box;
-import static org.ibess.cdi.runtime.st.BoxingUtil.unbox;
 import static org.ibess.cdi.runtime.st.Dsl.*;
+import static org.ibess.cdi.util.BoxingUtil.box;
+import static org.ibess.cdi.util.BoxingUtil.unbox;
 
 /**
  * @author ibessonov
@@ -355,8 +354,8 @@ final class InheritorGenerator {
         }
         if (type instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) type;
-            Class clazz = (Class) parameterizedType.getRawType();
-            if (clazz == Class.class) {
+            Type rawType = parameterizedType.getRawType();
+            if (rawType == Class.class) {
                 Type actualTypeArgument = parameterizedType.getActualTypeArguments()[0];
                 TypeVariable actualTypeVariable = (TypeVariable) actualTypeArgument;
 
@@ -405,7 +404,7 @@ final class InheritorGenerator {
     }
 
     private static StExpression getTypeVariableDescriptor(ClassInfo ci, TypeVariable type) {
-        return _arrayElement(_of(_myField(_named("$d"))), _withIndex(ci.x.paramsIndex.get(type.getTypeName())));
+        return _arrayElement(_of(_myField(_named("$d"))), _withIndex(ci.paramIndex(type.getTypeName())));
     }
 
     private static StExpression getDescriptor(ClassInfo ci, Type type) {
@@ -428,7 +427,7 @@ final class InheritorGenerator {
                         for (int i = 0, length = actualTypeArguments.length; i < length; i++) {
                             Type actualTypeArgument = actualTypeArguments[i];
                             boolean matches = (actualTypeArgument instanceof TypeVariable)
-                                    && (i == ci.x.paramsIndex.get(actualTypeArgument.getTypeName()));
+                                    && (i == ci.paramIndex(actualTypeArgument.getTypeName()));
                             if (!matches) {
                                 optimize = false;
                                 break;
@@ -464,7 +463,7 @@ final class InheritorGenerator {
         if (dejaVu.contains(ci)) return;
 
         dejaVu.add(ci);
-        for (Class clazz : ci.x.dependsOn) {
+        for (Class clazz : ci.x.dependencies) {
             ClassInfo info = registry.computeIfAbsent(clazz, this::getClassInfo);
             compileWithDependencies(info, dejaVu);
         }
@@ -474,7 +473,7 @@ final class InheritorGenerator {
             ci.compiledClass = defineClass(compile(stClass));
         }
 
-        ci.dispose();
+        ci.cleanup();
     }
 
     private static void validateConstructor(ClassInfo ci) {
@@ -552,7 +551,7 @@ final class InheritorGenerator {
                 if (params.length > 0) {
                     throw new CdiException(GENERIC_PARAMETERS_COUNT_MISMATCH, clazz.getCanonicalName(), 0, params.length);
                 }
-                ci.x.dependsOn.add(clazz);
+                ci.x.dependencies.add(clazz);
             }
         } else if (type instanceof ParameterizedType) {
             ParameterizedType pType = (ParameterizedType) type;
@@ -561,7 +560,7 @@ final class InheritorGenerator {
                 for (Type param : pType.getActualTypeArguments()) {
                     validateType(ci, param);
                 }
-                ci.x.dependsOn.add(clazz);
+                ci.x.dependencies.add(clazz);
             }
         } else if (type instanceof TypeVariable) {
             ci.x.hasDescriptors = true;
@@ -585,14 +584,14 @@ final class InheritorGenerator {
             public final Method[] declaredMethods;
             public final Method[] methods;
             public final Map<String, Integer> paramsIndex = new HashMap<>();
-            public final Set<Class> dependsOn = new HashSet<>();
+            public final Set<Class> dependencies = new HashSet<>();
             public final List<Method> constructors = new ArrayList<>();
-            public boolean hasContext = false;
-            public boolean hasDescriptors = false;
             public final List<StClass> stClasses = new ArrayList<>();
             public final Map<Object, FieldInfo> staticFields = new HashMap<>();
 
-            public final AtomicInteger counter = new AtomicInteger();
+            public boolean hasContext = false;
+            public boolean hasDescriptors = false;
+            public int counter = 0;
 
             public Temp(Class clazz) {
                 this.originalName = clazz.getCanonicalName();
@@ -625,13 +624,16 @@ final class InheritorGenerator {
         public String addStaticField(Class<?> type, Object value) {
             FieldInfo fieldInfo = x.staticFields.get(value);
             if (fieldInfo == null) {
-                String name = "$auto" + x.counter.getAndIncrement();
-                x.staticFields.put(value, fieldInfo = new FieldInfo(name, type, value));
+                x.staticFields.put(value, fieldInfo = new FieldInfo("$auto" + x.counter++, type, value));
             }
             return fieldInfo.name;
         }
 
-        public void dispose() {
+        public int paramIndex(String typeName) {
+            return x.paramsIndex.get(typeName);
+        }
+
+        public void cleanup() {
             x = null;
         }
     }

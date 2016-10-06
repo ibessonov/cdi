@@ -13,9 +13,9 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
 import static org.ibess.cdi.runtime.StCompiler.compile;
-import static org.ibess.cdi.runtime.st.BoxingUtil.box;
-import static org.ibess.cdi.runtime.st.BoxingUtil.unbox;
 import static org.ibess.cdi.runtime.st.Dsl.*;
+import static org.ibess.cdi.util.BoxingUtil.box;
+import static org.ibess.cdi.util.BoxingUtil.unbox;
 
 /**
  * @author ibessonov

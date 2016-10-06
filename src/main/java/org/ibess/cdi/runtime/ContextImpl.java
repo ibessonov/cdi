@@ -9,6 +9,8 @@ import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.internal.$Instantiator;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -23,11 +25,11 @@ import static org.ibess.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
  */
 public final class ContextImpl implements $Context {
 
-    private static final Map<Class, Class> defaults = new HashMap<>();
     private static final AtomicInteger counter = new AtomicInteger();
 
     private final Map<Class, ArrayList<ValueTransformer>> valueTransformers = new HashMap<>();
     private final Map<Class, ArrayList<MethodTransformer>> methodTransformers = new HashMap<>();
+    private final Map<Class, Provider> providers = new HashMap<>();
     private final InheritorGenerator generator = new InheritorGenerator(this, Integer.toString(counter.getAndIncrement()));
 
     public ContextImpl(Extension... extensions) {
@@ -56,6 +58,11 @@ public final class ContextImpl implements $Context {
         @Override
         public <T extends Annotation> void registerMethodTransformer(Class<T> clazz, MethodTransformer<T> methodTransformer) {
             methodTransformers.computeIfAbsent(clazz, c -> new ArrayList<>(1)).add(methodTransformer);
+        }
+
+        @Override
+        public <T> void registerProvider(Class<T> clazz, Provider<T> provider) {
+            addProvider(clazz, provider);
         }
     }
 
@@ -97,11 +104,21 @@ public final class ContextImpl implements $Context {
         };
     }
 
-    @Override public Object $unscoped(Class clazz) {
-        if (clazz.isInterface()) {
-            clazz = defaults.get(clazz);
+    public boolean canBeInjected(Class<?> unscoped) {
+        if (providers.containsKey(unscoped)) return true;
+        if (Modifier.isAbstract(unscoped.getModifiers())) return false;
+        try {
+            Constructor<?> constructor = unscoped.getConstructor();
+            return Modifier.isPublic(constructor.getModifiers());
+        } catch (NoSuchMethodException e) {
+            return false;
         }
-        return instantiate(clazz);
+    }
+
+    @Override public Object $unscoped(Class clazz) {
+        assert canBeInjected(clazz); //TODO move to the proper place
+        Provider provider = providers.get(clazz);
+        return (provider != null) ? provider.get() : instantiate(clazz);
     }
 
     private final Map<$Descriptor, Object> singletons = new HashMap<>();
@@ -173,17 +190,17 @@ public final class ContextImpl implements $Context {
         }
     }
 
-    private static void bind(Class sup, Class sub) {
-        defaults.put(sup, sub);
+    private <T> void addProvider(Class<T> clazz, Provider<T> provider) {
+        Provider oldProvider = providers.put(clazz, provider);
+        assert oldProvider == null;
     }
 
-    static {
-        bind(Context.class, ContextImpl.class);
-        bind(List.class, ArrayList.class);
-        bind(Map.class, HashMap.class);
-        bind(Set.class, HashSet.class);
-        bind(SortedMap.class, TreeMap.class);
-        bind(SortedSet.class, TreeSet.class);
-        bind(ConcurrentMap.class, ConcurrentHashMap.class);
+    {
+        addProvider(List.class, ArrayList::new);
+        addProvider(Map.class, HashMap::new);
+        addProvider(Set.class, HashSet::new);
+        addProvider(SortedMap.class, TreeMap::new);
+        addProvider(SortedSet.class, TreeSet::new);
+        addProvider(ConcurrentMap.class, ConcurrentHashMap::new);
     }
 }

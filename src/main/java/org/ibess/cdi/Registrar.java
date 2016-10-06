@@ -12,4 +12,6 @@ public interface Registrar {
     <T extends Annotation> void registerMethodTransformer(Class<T> clazz, MethodTransformer<T> methodTransformer);
 
 //    <T extends Annotation> void registerClassTransformer(Class<T> clazz, ClassTransformer<T> classTransformer);
+
+    <T> void registerProvider(Class<T> clazz, Provider<T> provider);
 }

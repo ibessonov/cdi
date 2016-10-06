@@ -25,8 +25,8 @@ import static org.ibess.cdi.Context.auto;
 import static org.ibess.cdi.enums.Scope.SINGLETON;
 import static org.ibess.cdi.internal.$Descriptor.$;
 import static org.ibess.cdi.internal.$Descriptor.$0;
-import static org.ibess.cdi.runtime.st.BoxingUtil.box;
 import static org.ibess.cdi.runtime.st.Dsl.*;
+import static org.ibess.cdi.util.BoxingUtil.box;
 import static org.ibess.cdi.util.CollectionUtil.array;
 import static org.junit.Assert.*;
 
@@ -189,6 +189,7 @@ public class ContextTest extends CdiTest {
     public void shitty() {
         Holder holder = context.lookup(Holder.class);
         assertSame(String.class, holder.shitty.value.clazz);
+        assertEquals("", holder.shitty.value.value);
     }
 
     @Scoped static abstract class Lazy<T> implements Supplier<T> {

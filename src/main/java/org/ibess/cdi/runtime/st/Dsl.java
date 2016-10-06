@@ -4,7 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 
-import static org.ibess.cdi.runtime.st.BoxingUtil.box;
+import static org.ibess.cdi.util.BoxingUtil.box;
 
 /**
  * @author ibessonov

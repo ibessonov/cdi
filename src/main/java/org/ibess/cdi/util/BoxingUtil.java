@@ -1,4 +1,6 @@
-package org.ibess.cdi.runtime.st;
+package org.ibess.cdi.util;
+
+import org.ibess.cdi.runtime.st.StExpression;
 
 import java.lang.reflect.Method;
 
