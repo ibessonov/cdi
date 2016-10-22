@@ -1,14 +1,13 @@
 package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.runtime.st.*;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Label;
-import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.*;
 import org.objectweb.asm.Type;
 
-import java.util.ArrayList;
+import java.lang.invoke.CallSite;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
@@ -30,7 +29,6 @@ public class StCompiler implements StVisitor {
     private Class<?>[] parameters;
     private int[] offsets;
     private Class<?> returnType;
-    private final List<Label> hooks = new ArrayList<>();
 
     public static byte[] compile(StClass clazz) {
         return new StCompiler().compile0(clazz);
@@ -122,11 +120,7 @@ public class StCompiler implements StVisitor {
     @Override
     public void visitReturnStatement(StReturnStatement returnStatement) {
         returnStatement.expression.accept(this);
-        if (hooks.isEmpty()) {
-            mv.visitInsn(returnOpcode(returnType));
-        } else {
-            mv.visitJumpInsn(GOTO, hooks.get(0));
-        }
+        mv.visitInsn(returnOpcode(returnType));
     }
 
     @Override
@@ -207,9 +201,12 @@ public class StCompiler implements StVisitor {
 
     @Override
     public void visitMethodCallStatement(StMethodCallStatement methodCallStatement) {
-        methodCallStatement.methodCallExpression.accept(this);
-        if (methodCallStatement.methodCallExpression.returnType != void.class) {
-            mv.visitInsn(POP);
+        StExpression expression = methodCallStatement.expression;
+        expression.accept(this);
+        if (expression instanceof StTypedExpression) {
+            if (((StTypedExpression) expression).getType() != void.class) {
+                mv.visitInsn(POP);
+            }
         }
     }
 
@@ -237,6 +234,33 @@ public class StCompiler implements StVisitor {
         Type returnType = getType(methodCallExpression.returnType);
         mv.visitMethodInsn(opcode, internal(methodCallExpression.declaringClassName), methodCallExpression.name,
                            getMethodDescriptor(returnType, paramTypes), opcode == INVOKEINTERFACE);
+    }
+
+    @Override
+    public void visitInvokeDynamicExpression(StInvokeDynamicExpression invokeDynamicExpression) {
+        for (StExpression parameter : invokeDynamicExpression.parameters) {
+            parameter.accept(this);
+        }
+        Class<?>[] params = invokeDynamicExpression.paramTypes;
+        Type[] paramTypes = new Type[params.length];
+        for (int i = 0, size = params.length; i < size; i++) {
+            paramTypes[i] = params[i] == null ? getType(descriptor(internalClassName)) : getType(params[i]);
+        }
+        Type returnType = getType(invokeDynamicExpression.returnType);
+        Type[] metafactoryParams = new Type[3 + invokeDynamicExpression.args.length];
+        metafactoryParams[0] = getType(MethodHandles.Lookup.class);
+        metafactoryParams[1] = getType(String.class);
+        metafactoryParams[2] = getType(MethodType.class);
+        for (int i = 0, len = invokeDynamicExpression.args.length; i < len; i++) {
+            metafactoryParams[i + 3] = getType(invokeDynamicExpression.args[i].getClass());
+        }
+
+        mv.visitInvokeDynamicInsn(invokeDynamicExpression.methodName, getMethodDescriptor(returnType, paramTypes),
+            new Handle(H_INVOKESTATIC, internal(invokeDynamicExpression.metafactory.getName()),
+                invokeDynamicExpression.metafactoryMethod,
+                getMethodDescriptor(getType(CallSite.class), metafactoryParams), false
+            ), invokeDynamicExpression.args
+        );
     }
 
     @Override
@@ -315,14 +339,6 @@ public class StCompiler implements StVisitor {
         mv.visitInsn(SWAP);
     }
 
-    @Override
-    public void visitReturnHookStatement(StReturnHookStatement returnHookStatement) {
-        hooks.add(0, new Label());
-        returnHookStatement.statement.accept(this);
-        mv.visitLabel(hooks.remove(0));
-        returnHookStatement.hook.accept(this);
-    }
-
     private int getInvokeMethodOpcode(InvokeType invokeType) {
         switch (invokeType) {
             case STATIC:    return INVOKESTATIC;
@@ -386,10 +402,9 @@ public class StCompiler implements StVisitor {
     }
 
     private static String descriptor(String name) {
-        String internal = internal(name);
-        if (internal.startsWith("[")) return internal;
+        if (name.startsWith("[")) return internal(name);
 
-        switch (internal) {
+        switch (name) {
             case "boolean": return "Z";
             case "byte"   : return "B";
             case "char"   : return "C";
@@ -399,6 +414,6 @@ public class StCompiler implements StVisitor {
             case "float"  : return "F";
             case "double" : return "D";
         }
-        return "L" + internal + ";";
+        return "L" + internal(name) + ";";
     }
 }

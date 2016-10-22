@@ -49,9 +49,9 @@ public interface StVisitor {
 
     void visitParamAssignmentStatement(StParamAssignmentStatement paramAssignmentStatement);
 
-    void visitReturnHookStatement(StReturnHookStatement returnHookStatement);
-
     void visitSwapExpression(StSwapExpression swapExpression);
 
     void visitIfStatement(StIfStatement ifStatement);
+
+    void visitInvokeDynamicExpression(StInvokeDynamicExpression invokeDynamicExpression);
 }

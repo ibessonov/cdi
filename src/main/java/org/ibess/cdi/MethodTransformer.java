@@ -1,8 +1,7 @@
 package org.ibess.cdi;
 
-import org.ibess.cdi.runtime.st.StStatement;
-
 import java.lang.annotation.Annotation;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 
 /**
@@ -11,5 +10,5 @@ import java.lang.reflect.Method;
 @FunctionalInterface
 public interface MethodTransformer<T extends Annotation> {
 
-    StStatement transform(StStatement statement, Method method, T annotation);
+    MethodHandle transform(MethodHandle handle, Method method, T annotation);
 }

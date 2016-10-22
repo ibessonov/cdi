@@ -1,7 +1,6 @@
 package org.ibess.cdi;
 
 import org.ibess.cdi.internal.$Context;
-import org.ibess.cdi.runtime.ContextImpl;
 import org.junit.Before;
 
 import static org.ibess.cdi.util.CollectionUtil.array;
@@ -16,7 +15,7 @@ public class CdiTest {
 
     @Before
     public void setUp() {
-        context = new ContextImpl(getExtensions());
+        context = ($Context) Context.createContext(getExtensions());
     }
 
     public Extension[] getExtensions() {

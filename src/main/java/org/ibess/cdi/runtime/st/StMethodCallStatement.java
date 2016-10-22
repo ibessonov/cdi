@@ -5,10 +5,10 @@ package org.ibess.cdi.runtime.st;
  */
 public class StMethodCallStatement implements StStatement {
 
-    public final StMethodCallExpression methodCallExpression; //TODO should I use StExpression?
+    public final StExpression expression;
 
-    public StMethodCallStatement(StMethodCallExpression methodCallExpression) {
-        this.methodCallExpression = methodCallExpression;
+    public StMethodCallStatement(StExpression expression) {
+        this.expression = expression;
     }
 
     @Override

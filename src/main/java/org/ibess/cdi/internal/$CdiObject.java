@@ -8,7 +8,7 @@ package org.ibess.cdi.internal;
 public interface $CdiObject {
 
     /**
-     * Injects all @Inject fields of this object and runs @Constructor method with injected parameters if its present.
+     * Injects all @Inject fields of this object and runs all @Inject methods with injected parameters if they're present.
      * Should be called only once for every created $CdiObject instance.
      */
     void $construct();

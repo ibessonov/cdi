@@ -1,10 +1,9 @@
 package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.Context;
-import org.ibess.cdi.MethodTransformer;
-import org.ibess.cdi.ValueTransformer;
 import org.ibess.cdi.annotations.Inject;
 import org.ibess.cdi.annotations.Scoped;
+import org.ibess.cdi.enums.Scope;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
 import org.ibess.cdi.internal.$CdiObject;
@@ -13,21 +12,22 @@ import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.internal.$Instantiator;
 import org.ibess.cdi.runtime.st.*;
 import org.ibess.cdi.util.CollectionUtil;
+import org.ibess.cdi.util.ScopedAnnotationCache;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
 import java.util.*;
 
 import static java.lang.reflect.Modifier.*;
+import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
+import static java.util.Collections.singletonList;
 import static java.util.stream.Stream.concat;
 import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
 import static org.ibess.cdi.runtime.StCompiler.compile;
 import static org.ibess.cdi.runtime.st.Dsl.*;
-import static org.ibess.cdi.util.BoxingUtil.box;
-import static org.ibess.cdi.util.BoxingUtil.unbox;
 
 /**
  * @author ibessonov
@@ -45,12 +45,6 @@ final class InheritorGenerator {
     private static final Method $;
     private static final Method $0;
 
-    private static final Method transform;
-
-    private static final Method remove;
-
-    private static final Method noop;
-
     static {
         try {
             $lookup    = $Context.class.getDeclaredMethod("$lookup",    $Descriptor.class);
@@ -60,12 +54,6 @@ final class InheritorGenerator {
 
             $  = $Descriptor.class.getDeclaredMethod("$",  Class.class, $Descriptor[].class);
             $0 = $Descriptor.class.getDeclaredMethod("$0", Class.class);
-
-            transform = ValueTransformer.class.getDeclaredMethod("transform", Object.class, Class.class, Annotation.class);
-
-            remove = Map.class.getDeclaredMethod("remove", Object.class);
-
-            noop = RuntimeUtil.class.getDeclaredMethod("noop");
         } catch (NoSuchMethodException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -74,14 +62,14 @@ final class InheritorGenerator {
     private final ContextImpl context;
     private final Map<Class, ClassInfo> registry = new HashMap<>();
 
-    private final String postfix;
+    private final String contextId;
 
-    InheritorGenerator(ContextImpl context, String postfix) {
+    InheritorGenerator(ContextImpl context, String contextId) {
         this.context = context;
-        this.postfix = postfix;
+        this.contextId = contextId;
     }
 
-    public Class getSubclass(Class clazz) {
+    public Class<?> getSubclass(Class<?> clazz) {
         ClassInfo ci = registry.get(clazz);
         if (ci == null || ci.compiledClass == null) {
             synchronized (InheritorGenerator.class) {
@@ -104,8 +92,8 @@ final class InheritorGenerator {
         if (clazz.getEnclosingClass() != null && !isStatic(clazz.getModifiers())) {
             // throw
         }
-        Scoped scoped = clazz.getAnnotation(Scoped.class);
-        if (scoped.value() != STATELESS && clazz.getTypeParameters().length > 0) {
+        Scope scope = ScopedAnnotationCache.getScope(clazz);
+        if (scope != STATELESS && clazz.getTypeParameters().length > 0) {
             throw new CdiException(PARAMETERIZED_NON_STATELESS, clazz.getCanonicalName());
         }
 
@@ -119,13 +107,13 @@ final class InheritorGenerator {
         validateConstructor(ci);
 
         // generation
-        String inheritorClassName = clazz.getName() + CDI_SUFFIX + postfix;
+        String inheritorClassName = clazz.getName() + CDI_SUFFIX + contextId;
         String instantiatorClassName = inheritorClassName + "$" + I_SUFFIX;
 
         ci.x.stClasses.add(_class(_named(instantiatorClassName), _extends(Object.class), _implements($Instantiator.class),
             _withoutFields(), _withMethods(
                 _method(_named("<init>"), _withoutParameterTypes(), _returnsNothing(), _withBody(
-                    _invoke(_invokeSpecialMethod(_ofClass(Object.class), _named("<init>"),
+                    _statement(_invokeSpecialMethod(_ofClass(Object.class), _named("<init>"),
                         _withoutParameterTypes(), _returnsNothing(),
                         _on(_this), _withoutParameters()
                     ))
@@ -149,32 +137,30 @@ final class InheritorGenerator {
 
         concat(stream(ci.x.methods), stream(ci.x.declaredMethods)).distinct().forEach(method -> {
             if (isAbstract(method.getModifiers())) {
-                methods.add(implement(ci, method));
+                methods.addAll(implement(ci, method));
             }
         });
         // assume that validation is already done
         for (Method method : ci.x.declaredMethods) {
             if (isAbstract(method.getModifiers())) continue;
-            List<StExpression> params = new ArrayList<>(method.getParameterCount());
-            for (int index = 0; index < method.getParameterCount(); index++) {
+            Class<?>[] methodParameterTypes = method.getParameterTypes();
+            int methodParameterCount = methodParameterTypes.length;
+
+            List<StExpression> params = new ArrayList<>(methodParameterCount + 1);
+            params.add(_this);
+
+            List<Class<?>> paramTypes = new ArrayList<>(methodParameterCount + 1);
+            paramTypes.add(null);
+
+            for (int index = 0; index < methodParameterCount; index++) {
                 params.add(_methodParam(index));
+                paramTypes.add(methodParameterTypes[index]);
             }
             CollectionUtil.addIfNotNull(methods, generateTransformedMethod(ci, method,
-                _invokeSpecialMethod(method, _on(_this), _withParameters(_expressions(params)))
+                _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
+                    "override", CdiMetafactory.class, _withParameters(_expressions(params))
+                )
             ));
-        }
-
-        List<StStatement> initStaticFields = new ArrayList<>();
-        for (ClassInfo.FieldInfo field : ci.x.staticFields.values()) {
-            if (field.value instanceof Annotation) {
-                initStaticFields.add(_assignStatic(_named(field.name), _ofClass(inheritorClassName), _withType(field.type),
-                    _value(AnnotationGenerator.getExpression((Annotation) field.value))
-                ));
-            } else {
-                initStaticFields.add(_assignStatic(_named(field.name), _ofClass(inheritorClassName), _withType(field.type),
-                    _value(initFromTempStorage(field.type, field.value))
-                ));
-            }
         }
 
         methods.add(_staticMethod(_named("<clinit>"), _withoutParameterTypes(), _returnsNothing(), _withBody(
@@ -184,12 +170,11 @@ final class InheritorGenerator {
                     _on(_new(instantiatorClassName)),
                     _withParameters(_dup)
                 )
-            )),
-            _scope(_statements(initStaticFields))
+            ))
         )));
 
         methods.add(_method(_named("<init>"), _withParameterTypes($Context.class, $Descriptor[].class), _returnsNothing(), _withBody(
-            _invoke(_invokeSpecialMethod(_ofClass(clazz), _named("<init>"),
+            _statement(_invokeSpecialMethod(_ofClass(clazz), _named("<init>"),
                 _withoutParameterTypes(), _returnsNothing(),
                 _on(_this), _withoutParameters()
             )),
@@ -202,9 +187,6 @@ final class InheritorGenerator {
         // fields
         List<StField> fields = new ArrayList<>();
         fields.add(_staticField(_named("$i"), _withType($Instantiator.class)));
-        for (ClassInfo.FieldInfo field : ci.x.staticFields.values()) {
-            fields.add(_staticField(_named(field.name), _withType(field.type)));
-        }
         if (ci.x.hasContext) {
             fields.add(_field(_named("$c"), _withType($Context.class)));
         }
@@ -221,55 +203,37 @@ final class InheritorGenerator {
 
     private StMethod generateTransformedMethod(ClassInfo ci, Method method, StExpression methodBody) {
         Annotation[][] parameterAnnotations = method.getParameterAnnotations();
-        Class<?>[] parameterTypes = method.getParameterTypes();
         Type[] genericParameterTypes = method.getGenericParameterTypes();
         List<StStatement> statements = new ArrayList<>();
-        int parametersCount = parameterAnnotations.length;
-        for (int i = 0; i < parametersCount; i++) {
-            List<Annotation> annotations = new ArrayList<>();
+        boolean override = false;
+        for (int i = 0, parametersCount = parameterAnnotations.length; i < parametersCount; i++) {
             for (Annotation parameterAnnotation : parameterAnnotations[i]) {
                 if (parameterAnnotation.annotationType() == Inject.class) {
                     statements.add(_assignMethodParam(i, getLookupExpression(ci, genericParameterTypes[i])));
+                    override = true;
                 }
-                if (context.valueTransformerRegistered(parameterAnnotation.annotationType())) {
-                    annotations.add(parameterAnnotation);
+                if (!override && context.valueTransformerRegistered(parameterAnnotation.annotationType())) {
+                    override = true;
                 }
-            }
-            if (!annotations.isEmpty()) {
-                statements.add(_assignMethodParam(i,
-                    transformValue(ci, annotations, _methodParam(i), parameterTypes[i])
-                ));
             }
         }
-        List<Annotation> valueAnnotations = new ArrayList<>();
-        List<Annotation> methodAnnotations = new ArrayList<>();
-        for (Annotation methodAnnotation : method.getAnnotations()) {
-            if (context.valueTransformerRegistered(methodAnnotation.annotationType())) {
-                valueAnnotations.add(methodAnnotation);
-            }
-            if (context.methodTransformerRegistered(methodAnnotation.annotationType())) {
-                methodAnnotations.add(methodAnnotation);
+        if (!override) {
+            for (Annotation methodAnnotation : method.getAnnotations()) {
+                if (context.valueTransformerRegistered(methodAnnotation.annotationType())) {
+                    override = true;
+                    break;
+                } else if (context.methodTransformerRegistered(methodAnnotation.annotationType())) {
+                    override = true;
+                    break;
+                }
             }
         }
-        if (!valueAnnotations.isEmpty() || !methodAnnotations.isEmpty() || !statements.isEmpty()) {
-            Class<?> returnType = method.getReturnType();
+        if (override) {
             StStatement methodStatement;
-            if (returnType == void.class) {
-                methodStatement = _invoke((StMethodCallExpression) methodBody);
+            if (method.getReturnType() == void.class) {
+                methodStatement = _statement(methodBody);
             } else {
                 methodStatement = _return(methodBody);
-            }
-            for (Annotation annotation : methodAnnotations) {
-                MethodTransformer methodTransformer = context.getMethodTransformer(annotation.annotationType());
-                if (methodTransformer != null) {
-                    //noinspection unchecked
-                    methodStatement = methodTransformer.transform(methodStatement, method, annotation);
-                }
-            }
-            if (returnType != void.class && !valueAnnotations.isEmpty()) {
-                methodStatement = _returnHook(methodStatement, _return(
-                    transformValue(ci, valueAnnotations, _swap, returnType)
-                ));
             }
             statements.add(methodStatement);
             return _overrideMethod(method, _withBody(_statements(statements)));
@@ -277,52 +241,43 @@ final class InheritorGenerator {
         return null;
     }
 
-    private StMethod implement(ClassInfo ci, Method method) {
+    private List<StMethod> implement(ClassInfo ci, Method method) {
+        String generatedName = method.getName() + ci.newMethodName();
+
         Type genericReturnType = method.getGenericReturnType();
-        StExpression body;
-        boolean isVoid = genericReturnType == void.class;
-        if (isVoid) {
-            body = _invokeStaticMethod(noop, _withoutParameters());
-        } else {
+        boolean voidReturnType = (genericReturnType == void.class);
+        if (!voidReturnType) {
             validateLookup(ci, genericReturnType);
-            body = getLookupExpression(ci, genericReturnType);
+        }
+        StExpression body = getLookupExpression(ci, genericReturnType);
+
+        Class<?>[] methodParameterTypes = method.getParameterTypes();
+        int methodParameterCount = methodParameterTypes.length;
+
+        List<StExpression> params = new ArrayList<>(methodParameterCount + 1);
+        params.add(_this);
+
+        List<Class<?>> paramTypes = new ArrayList<>(methodParameterCount + 1);
+        paramTypes.add(null);
+
+        for (int index = 0; index < methodParameterCount; index++) {
+            params.add(_methodParam(index));
+            paramTypes.add(methodParameterTypes[index]);
         }
 
-        StMethod transformedMethod = generateTransformedMethod(ci, method, body);
+        StExpression invokeDynamic = _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
+            "implement", CdiMetafactory.class, _withParameters(_expressions(params)), generatedName
+        );
+        StMethod transformedMethod = generateTransformedMethod(ci, method, invokeDynamic);
         if (transformedMethod != null) {
-            return transformedMethod;
-        }
-        return _overrideMethod(method, _withBody(isVoid ? _noop() : _return(body)));
-    }
-
-    private StExpression initFromTempStorage(Class<?> clazz, Object value) {
-        String key = UUID.randomUUID().toString().intern();
-        RuntimeUtil.TEMP_STORAGE.put(key, value);
-        return _cast(clazz, _invokeInterfaceMethod(remove,
-            _of(_getStaticField(_ofClass(RuntimeUtil.class), _named("TEMP_STORAGE"), _withType(Map.class))),
-            _withParameters(_string(key))
-        ));
-    }
-
-    private StExpression transformValue(ClassInfo ci, Collection<Annotation> annotations,
-                                        StExpression expression, Class<?> type) {
-        if (type.isPrimitive()) {
-            expression = box(type, expression);
-        }
-        for (Annotation annotation : annotations) {
-            ValueTransformer valueTransformer = context.getValueTransformer(annotation.annotationType());
-            String transformerField = ci.addStaticField(ValueTransformer.class, valueTransformer);
-            String annotationField  = ci.addStaticField(Annotation.class, annotation);
-            expression = _invokeInterfaceMethod(transform,
-                _on(_myStaticField(transformerField)),
-                _withParameters(expression, _class(type), _myStaticField(annotationField))
+            paramTypes = paramTypes.subList(1, methodParameterCount + 1);
+            StMethod generatedMethod = _method(_named(generatedName),
+                _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
+                _withBody(voidReturnType ? _noop() : _return(body))
             );
+            return asList(generatedMethod, transformedMethod);
         }
-        if (type.isPrimitive()) {
-            return unbox(type, expression);
-        } else {
-            return _cast(type, expression);
-        }
+        return singletonList(_overrideMethod(method, _withBody(voidReturnType ? _noop() : _return(body))));
     }
 
     private static StStatement[] getConstructorBody(ClassInfo ci) {
@@ -341,7 +296,7 @@ final class InheritorGenerator {
                 params[i] = getLookupExpression(ci, parameterTypes[i]);
             }
 
-            statements.add(_invoke(_invokeVirtualMethod(constructor, _on(_this), _withParameters(params))));
+            statements.add(_statement(_invokeVirtualMethod(constructor, _on(_this), _withParameters(params))));
         }
 
         return _statements(statements);
@@ -381,12 +336,12 @@ final class InheritorGenerator {
             param = getTypeVariableDescriptor(ci, (TypeVariable) type);
             rawClass = Object.class;
         } else {
-            Scoped scoped = rawClass.getAnnotation(Scoped.class);
-            if (scoped == null) {
+            Scope scope = ScopedAnnotationCache.getScope(rawClass);
+            if (scope == null) {
                 method = $unscoped;
                 param = _class(rawClass);
             } else {
-                switch (scoped.value()) {
+                switch (scope) {
                     case SINGLETON:
                         method = $singleton;
                         break;
@@ -415,7 +370,7 @@ final class InheritorGenerator {
             Method method;
             if (type instanceof ParameterizedType) {
                 ParameterizedType parameterizedType = (ParameterizedType) type;
-                Class clazz = (Class) parameterizedType.getRawType();
+                Class<?> clazz = (Class) parameterizedType.getRawType();
 
                 params.add(_class(clazz));
                 if (clazz.isAnnotationPresent(Scoped.class)) {
@@ -463,15 +418,17 @@ final class InheritorGenerator {
         if (dejaVu.contains(ci)) return;
 
         dejaVu.add(ci);
-        for (Class clazz : ci.x.dependencies) {
+        for (Class<?> clazz : ci.x.dependencies) {
             ClassInfo info = registry.computeIfAbsent(clazz, this::getClassInfo);
             compileWithDependencies(info, dejaVu);
         }
         dejaVu.remove(ci);
 
+        Class<?> compiledClass = null;
         for (StClass stClass : ci.x.stClasses) {
-            ci.compiledClass = defineClass(compile(stClass));
+            compiledClass = defineClass(compile(stClass));
         }
+        ci.compiledClass = compiledClass;
 
         ci.cleanup();
     }
@@ -526,8 +483,8 @@ final class InheritorGenerator {
     }
 
     private static void validateConstructor(ClassInfo ci, Method constructor) {
-        Class[] exceptions = constructor.getExceptionTypes();
-        for (Class exceptionClass : exceptions) {
+        Class<?>[] exceptions = constructor.getExceptionTypes();
+        for (Class<?> exceptionClass : exceptions) {
             if (!RuntimeException.class.isAssignableFrom(exceptionClass) && !Error.class.isAssignableFrom(exceptionClass)) {
                 throw new CdiException(CONSTRUCTOR_THROWS_EXCEPTION, ci.x.originalName, exceptionClass.getCanonicalName());
             }
@@ -545,7 +502,7 @@ final class InheritorGenerator {
 
     private static void validateType(ClassInfo ci, Type type) {
         if (type instanceof Class) {
-            Class clazz = (Class) type; // raw type should be validated in future
+            Class<?> clazz = (Class) type; // raw type should be validated in future
             if (clazz.isAnnotationPresent(Scoped.class)) {
                 TypeVariable[] params = clazz.getTypeParameters();
                 if (params.length > 0) {
@@ -555,7 +512,7 @@ final class InheritorGenerator {
             }
         } else if (type instanceof ParameterizedType) {
             ParameterizedType pType = (ParameterizedType) type;
-            Class clazz = (Class) pType.getRawType(); // raw type should be validated in future, but not parameterized type. That would cause infinite recursion in some cases
+            Class<?> clazz = (Class) pType.getRawType(); // raw type should be validated in future, but not parameterized type. That would cause infinite recursion in some cases
             if (clazz.isAnnotationPresent(Scoped.class)) {
                 for (Type param : pType.getActualTypeArguments()) {
                     validateType(ci, param);
@@ -575,10 +532,11 @@ final class InheritorGenerator {
     }
 
     public static class ClassInfo {
-        public Class compiledClass = null;
+        public Class<?> compiledClass = null;
         public Temp x;
 
         public static class Temp {
+            public final Class<?> clazz;
             public final String originalName;
             public final Field[] declaredFields;
             public final Method[] declaredMethods;
@@ -587,13 +545,13 @@ final class InheritorGenerator {
             public final Set<Class> dependencies = new HashSet<>();
             public final List<Method> constructors = new ArrayList<>();
             public final List<StClass> stClasses = new ArrayList<>();
-            public final Map<Object, FieldInfo> staticFields = new HashMap<>();
 
             public boolean hasContext = false;
             public boolean hasDescriptors = false;
             public int counter = 0;
 
-            public Temp(Class clazz) {
+            public Temp(Class<?> clazz) {
+                this.clazz = clazz;
                 this.originalName = clazz.getCanonicalName();
                 this.declaredFields = clazz.getDeclaredFields();
                 this.declaredMethods = clazz.getDeclaredMethods();
@@ -601,19 +559,7 @@ final class InheritorGenerator {
             }
         }
 
-        public static class FieldInfo {
-            public final String name;
-            public final Class<?> type;
-            public final Object value;
-
-            public FieldInfo(String name, Class<?> type, Object value) {
-                this.name = name;
-                this.type = type;
-                this.value = value;
-            }
-        }
-
-        public ClassInfo(Class clazz) {
+        public ClassInfo(Class<?> clazz) {
             this.x = new Temp(clazz);
             TypeVariable[] params = clazz.getTypeParameters();
             for (int i = 0; i < params.length; i++) {
@@ -621,12 +567,8 @@ final class InheritorGenerator {
             }
         }
 
-        public String addStaticField(Class<?> type, Object value) {
-            FieldInfo fieldInfo = x.staticFields.get(value);
-            if (fieldInfo == null) {
-                x.staticFields.put(value, fieldInfo = new FieldInfo("$auto" + x.counter++, type, value));
-            }
-            return fieldInfo.name;
+        public String newMethodName() {
+            return "$generated" + x.counter++;
         }
 
         public int paramIndex(String typeName) {

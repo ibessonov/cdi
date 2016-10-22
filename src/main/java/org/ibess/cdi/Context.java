@@ -1,5 +1,6 @@
 package org.ibess.cdi;
 
+import org.ibess.cdi.runtime.CdiMetafactory;
 import org.ibess.cdi.runtime.ContextImpl;
 
 /**
@@ -22,7 +23,9 @@ public interface Context {
      * @see Extension
      */
     static Context createContext(Extension... extensions) {
-        return new ContextImpl(extensions);
+        ContextImpl context = new ContextImpl(extensions);
+        CdiMetafactory.register(context);
+        return context;
     }
 
     /**

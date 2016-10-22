@@ -3,6 +3,7 @@ package org.ibess.cdi.enums;
 /**
  * @author ibessonov
  */
+//TODO cleanup this mess
 public enum CdiErrorType {
 
     GENERIC_PARAMETERS_COUNT_MISMATCH("Generic parameters count mismatch for class %s. Expected: %d. Actual: %d"),

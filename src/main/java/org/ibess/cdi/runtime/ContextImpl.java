@@ -27,10 +27,11 @@ public final class ContextImpl implements $Context {
 
     private static final AtomicInteger counter = new AtomicInteger();
 
-    private final Map<Class, ArrayList<ValueTransformer>> valueTransformers = new HashMap<>();
-    private final Map<Class, ArrayList<MethodTransformer>> methodTransformers = new HashMap<>();
-    private final Map<Class, Provider> providers = new HashMap<>();
-    private final InheritorGenerator generator = new InheritorGenerator(this, Integer.toString(counter.getAndIncrement()));
+    final Map<Class, ArrayList<ValueTransformer>> valueTransformers = new HashMap<>();
+    final Map<Class, ArrayList<MethodTransformer>> methodTransformers = new HashMap<>();
+    final Map<Class, Provider> providers = new HashMap<>();
+    final String contextId = Integer.toString(counter.getAndIncrement());
+    final InheritorGenerator generator = new InheritorGenerator(this, contextId);
 
     public ContextImpl(Extension... extensions) {
         if (extensions.length != 0) {
@@ -66,7 +67,7 @@ public final class ContextImpl implements $Context {
         }
     }
 
-    public boolean valueTransformerRegistered(Class clazz) {
+    public boolean valueTransformerRegistered(Class<?> clazz) {
         return valueTransformers.containsKey(clazz);
     }
 
@@ -77,15 +78,15 @@ public final class ContextImpl implements $Context {
         if (list.size() == 1) {
             return list.get(0);
         }
-        return (object, c, annotation) -> {
+        return (annotation, c, object) -> {
             for (int i = 0, len = list.size(); i < len; i++) {
-                object = list.get(i).transform(object, c, annotation);
+                object = list.get(i).transform(annotation, c, object);
             }
             return object;
         };
     }
 
-    public boolean methodTransformerRegistered(Class clazz) {
+    public boolean methodTransformerRegistered(Class<?> clazz) {
         return methodTransformers.containsKey(clazz);
     }
 
@@ -115,15 +116,17 @@ public final class ContextImpl implements $Context {
         }
     }
 
-    @Override public Object $unscoped(Class clazz) {
+    @Override
+    public <T> T $unscoped(Class<T> clazz) {
         assert canBeInjected(clazz); //TODO move to the proper place
-        Provider provider = providers.get(clazz);
-        return (provider != null) ? provider.get() : instantiate(clazz);
+        Provider<?> provider = providers.get(clazz);
+        return (provider != null) ? clazz.cast(provider.get()) : instantiate(clazz);
     }
 
-    private final Map<$Descriptor, Object> singletons = new HashMap<>();
-    private final ReadWriteLock            rwLock     = new ReentrantReadWriteLock();
-    @Override public Object $singleton($Descriptor d) {
+    private final Map<$Descriptor<?>, Object> singletons = new HashMap<>();
+    private final ReadWriteLock               rwLock     = new ReentrantReadWriteLock();
+    @Override
+    public <T> T $singleton($Descriptor<T> d) {
         rwLock.readLock().lock();
         Object object = singletons.get(d);
         rwLock.readLock().unlock();
@@ -140,18 +143,19 @@ public final class ContextImpl implements $Context {
                         singletons.remove(d);
                         throw e;
                     }
-                    return cdiObject;
+                    object = cdiObject;
                 }
             } finally {
                 rwLock.writeLock().unlock();
             }
         }
-        return object;
+        return d.c.cast(object);
     }
 
-    private final ThreadLocal<Map<$Descriptor, Object>> dejaVu = ThreadLocal.withInitial(HashMap::new);
-    @Override public Object $stateless($Descriptor d) {
-        Map<$Descriptor, Object> dejaVu = this.dejaVu.get();
+    private final ThreadLocal<Map<$Descriptor<?>, Object>> dejaVu = ThreadLocal.withInitial(HashMap::new);
+    @Override
+    public <T> T $stateless($Descriptor<T> d) {
+        Map<$Descriptor<?>, Object> dejaVu = this.dejaVu.get();
         Object object = dejaVu.get(d);
         if (object == null) {
             $CdiObject cdiObject = instantiate(d);
@@ -161,12 +165,12 @@ public final class ContextImpl implements $Context {
             } finally {
                 dejaVu.remove(d);
             }
-            return cdiObject;
+            object = cdiObject;
         }
-        return object;
+        return d.c.cast(object);
     }
 
-    private static Object instantiate(Class clazz) {
+    private static <T> T instantiate(Class<T> clazz) {
         try {
             return clazz.newInstance();
         } catch (InstantiationException ie) {
@@ -181,8 +185,8 @@ public final class ContextImpl implements $Context {
         return instantiators.computeIfAbsent(d.c, this::getInstantiator).$create(this, d.p);
     }
 
-    private $Instantiator getInstantiator(Class clazz) {
-        Class cdiImpl = generator.getSubclass(clazz);
+    private $Instantiator getInstantiator(Class<?> clazz) {
+        Class<?> cdiImpl = generator.getSubclass(clazz);
         try {
             return ($Instantiator) cdiImpl.getDeclaredField("$i").get(null);
         } catch (Throwable t) {

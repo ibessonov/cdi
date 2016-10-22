@@ -123,6 +123,10 @@ public class Dsl {
         return expressions.toArray(EMPTY_EXPRESSIONS);
     }
 
+    public static Class<?>[] _types(List<Class<?>> expressions) {
+        return expressions.toArray(EMPTY_CLASSES);
+    }
+
 
     public static String _ofClass(Class<?> clazz) {
         return clazz.getName();
@@ -186,7 +190,7 @@ public class Dsl {
         return new StReturnStatement(expression);
     }
 
-    public static StStatement _invoke(StMethodCallExpression expression) {
+    public static StStatement _statement(StExpression expression) {
         return new StMethodCallStatement(expression);
     }
 
@@ -213,10 +217,6 @@ public class Dsl {
 
     public static StStatement _assignMethodParam(int index, StExpression expression) {
         return new StParamAssignmentStatement(index, expression);
-    }
-
-    public static StStatement _returnHook(StStatement statement, StStatement hook) {
-        return new StReturnHookStatement(statement, hook);
     }
 
     public static StStatement _if(StExpression condition, StStatement then, StStatement els) {
@@ -255,48 +255,55 @@ public class Dsl {
      ********************************************************************************
      */
 
-    public static StMethodCallExpression _invokeSpecialMethod(String declaringClassName, String name,
+    public static StExpression _invokeSpecialMethod(String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression left, StExpression[] parameters) {
         return _invokeMethod(InvokeType.SPECIAL, declaringClassName, name, parameterTypes, returnType, left, parameters);
     }
 
-    public static StMethodCallExpression _invokeSpecialMethod(Method method, StExpression left, StExpression[] parameters) {
+    public static StExpression _invokeSpecialMethod(Method method, StExpression left, StExpression[] parameters) {
         return _invokeMethod(InvokeType.SPECIAL, method, left, parameters);
     }
 
-    public static StMethodCallExpression _invokeVirtualMethod(String declaringClassName, String name,
+    public static StExpression _invokeVirtualMethod(String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression left, StExpression[] parameters) {
         return _invokeMethod(InvokeType.VIRTUAL, declaringClassName, name, parameterTypes, returnType, left, parameters);
     }
 
-    public static StMethodCallExpression _invokeVirtualMethod(Method method, StExpression left, StExpression[] parameters) {
+    public static StExpression _invokeVirtualMethod(Method method, StExpression left, StExpression[] parameters) {
         return _invokeMethod(InvokeType.VIRTUAL, method, left, parameters);
     }
 
-    public static StMethodCallExpression _invokeInterfaceMethod(Method method, StExpression left, StExpression[] parameters) {
+    public static StExpression _invokeInterfaceMethod(Method method, StExpression left, StExpression[] parameters) {
         return _invokeMethod(InvokeType.INTERFACE, method, left, parameters);
     }
 
-    public static StMethodCallExpression _invokeStaticMethod(String declaringClassName, String name,
+    public static StExpression _invokeStaticMethod(String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression[] parameters) {
         return _invokeMethod(InvokeType.STATIC, declaringClassName, name, parameterTypes, returnType, null, parameters);
     }
 
-    public static StMethodCallExpression _invokeStaticMethod(Method method, StExpression[] parameters) {
+    public static StExpression _invokeStaticMethod(Method method, StExpression[] parameters) {
         return _invokeMethod(InvokeType.STATIC, method, null, parameters);
     }
 
-    private static StMethodCallExpression _invokeMethod(InvokeType invokeType, String declaringClassName, String name,
+    private static StExpression _invokeMethod(InvokeType invokeType, String declaringClassName, String name,
             Class<?>[] parameterTypes, Class<?> returnType, StExpression left, StExpression[] parameters) {
         return new StMethodCallExpression(left, name, declaringClassName, returnType, parameterTypes, parameters, invokeType);
     }
 
-    private static StMethodCallExpression _invokeMethod(InvokeType invokeType, Method method, StExpression left, StExpression[] parameters) {
+    private static StExpression _invokeMethod(InvokeType invokeType, Method method, StExpression left, StExpression[] parameters) {
         return new StMethodCallExpression(left, method, parameters, invokeType);
     }
 
     public static StExpression _cast(Class<?> clazz, StExpression expression) {
         return new StCastExpression(clazz, expression);
+    }
+
+    public static StExpression _invokeDynamic(String methodName, Class<?>[] parameterTypes, Class<?> returnType,
+                                              String metafactoryMethodName, Class<?> metafactory,
+                                              StExpression[] parameters, Object... args) {
+        return new StInvokeDynamicExpression(methodName, parameterTypes, returnType,
+                metafactoryMethodName, metafactory, parameters, args);
     }
 
     /*
@@ -327,7 +334,7 @@ public class Dsl {
 
     public static StExpression _class(Class<?> clazz) {
         if (clazz.isPrimitive()) {
-            return _getStaticField(box(clazz).getName(), "TYPE", Class.class);
+            return _getStaticField(box(clazz).getName(), _named("TYPE"), _withType(Class.class));
         }
         return new StClassExpression(clazz);
     }

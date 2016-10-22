@@ -5,7 +5,7 @@ import java.lang.reflect.Method;
 /**
  * @author ibessonov
  */
-public class StMethodCallExpression implements StExpression {
+public class StMethodCallExpression implements StTypedExpression {
 
     public final StExpression object;
     public final String name;
@@ -39,5 +39,10 @@ public class StMethodCallExpression implements StExpression {
     @Override
     public void accept(StVisitor visitor) {
         visitor.visitMethodCallExpression(this);
+    }
+
+    @Override
+    public Class<?> getType() {
+        return returnType;
     }
 }

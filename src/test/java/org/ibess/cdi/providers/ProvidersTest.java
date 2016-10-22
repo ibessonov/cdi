@@ -24,7 +24,7 @@ public class ProvidersTest extends CdiTest {
 
     @Override
     public Extension[] getExtensions() {
-        return array(registrar -> registrar.registerProvider(MyInterface.class, () -> INSTANCE));
+        return array(r -> r.registerProvider(MyInterface.class, () -> INSTANCE));
     }
 
     @Scoped static class WithCustomProvidedField {

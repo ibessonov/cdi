@@ -8,5 +8,5 @@ import java.lang.annotation.Annotation;
 @FunctionalInterface
 public interface ValueTransformer<T extends Annotation> {
 
-    Object transform(Object object, Class clazz, T annotation);
+    Object transform(T annotation, Class<?> clazz, Object object);
 }

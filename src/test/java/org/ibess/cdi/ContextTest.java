@@ -13,6 +13,8 @@ import org.junit.Test;
 import java.io.Serializable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -20,13 +22,14 @@ import java.util.function.Supplier;
 
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import static java.lang.invoke.MethodHandles.explicitCastArguments;
+import static java.lang.invoke.MethodHandles.filterReturnValue;
+import static java.lang.invoke.MethodType.methodType;
 import static java.util.Arrays.asList;
 import static org.ibess.cdi.Context.auto;
 import static org.ibess.cdi.enums.Scope.SINGLETON;
 import static org.ibess.cdi.internal.$Descriptor.$;
 import static org.ibess.cdi.internal.$Descriptor.$0;
-import static org.ibess.cdi.runtime.st.Dsl.*;
-import static org.ibess.cdi.util.BoxingUtil.box;
 import static org.ibess.cdi.util.CollectionUtil.array;
 import static org.junit.Assert.*;
 
@@ -50,31 +53,39 @@ public class ContextTest extends CdiTest {
 
         public static final List<Object> returned = new ArrayList<>();
 
+        private static final MethodHandle returnedHandle;
+
+        static {
+            try {
+                returnedHandle = MethodHandles.lookup().in(TestExtension.class)
+                        .findStatic(TestExtension.class, "returned", methodType(Object.class, Object.class));
+            } catch (Exception e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
         @Override
         public void register(Registrar registrar) {
-            registrar.registerValueTransformer(NotNull.class, (object, clazz, annotation) ->
+            registrar.registerValueTransformer(NotNull.class, (annotation, clazz, object) ->
                 Objects.requireNonNull(object, annotation.value())
             );
-            registrar.registerValueTransformer(Trimmed.class, (object, clazz, annotation) -> {
+            registrar.registerValueTransformer(Trimmed.class, (annotation, clazz, object) -> {
                 if (CharSequence.class.isAssignableFrom(clazz)) {
                     return object.toString().trim();
                 } else {
                     throw new IllegalArgumentException(clazz.getName());
                 }
             });
-            registrar.registerMethodTransformer(Traced.class, (statement, method, annotation) ->
-                _returnHook(statement,
-                    _return(_invokeStaticMethod(_ofClass(TestExtension.class), _named("returned"),
-                        _withParameterTypes(Object.class), _returnsNothing(),
-                        _withParameters(box(method.getReturnType(), _dup))
-                    ))
-                )
-            );
+            registrar.registerMethodTransformer(Traced.class, (handle, method, annotation) -> {
+                Class<?> returnType = handle.type().returnType();
+                return filterReturnValue(handle, explicitCastArguments(returnedHandle, methodType(returnType, returnType)));
+            });
         }
 
         @SuppressWarnings("unused")
-        static void returned(Object value) {
+        static Object returned(Object value) {
             returned.add(value);
+            return value;
         }
     }
 
@@ -142,7 +153,7 @@ public class ContextTest extends CdiTest {
 
     @Test
     public void genericPair() {
-        GenericPair pair = (GenericPair) context.$lookup($(GenericPair.class, $0(Integer.class), $0(Double.class)));
+        GenericPair pair = context.$lookup($(GenericPair.class, $0(Integer.class), $0(Double.class)));
 
         assertEquals(Integer.class, pair.t.c);
         assertEquals(Double.class, pair.v.c);
@@ -172,7 +183,7 @@ public class ContextTest extends CdiTest {
 
     @Test
     public void injectedClass() {
-        InjectedClass injectedClass = (InjectedClass) context.$lookup($(InjectedClass.class, $0(String.class), $0(List.class)));
+        InjectedClass injectedClass = context.$lookup($(InjectedClass.class, $0(String.class), $0(List.class)));
         assertEquals(String.class, injectedClass.clazz);
     }
 
@@ -214,7 +225,7 @@ public class ContextTest extends CdiTest {
 
     @Test
     public void lazy() {
-        WithLazy<Singleton> withLazy = (WithLazy) context.$lookup($(WithLazy.class, $0(Singleton.class)));
+        WithLazy<Singleton> withLazy = context.$lookup($(WithLazy.class, $0(Singleton.class)));
         assertSame(withLazy.lazy.get(), withLazy.lazy.get().instance);
     }
 

@@ -28,10 +28,10 @@ final class AnnotationGenerator {
 
     private static class Info {
 
-        public final Class clazz;
+        public final Class<?> clazz;
         public final Method[] methods; // we should keep methods in the same order
 
-        private Info(Class clazz, Method[] methods) {
+        private Info(Class<?> clazz, Method[] methods) {
             this.clazz = clazz;
             this.methods = methods;
         }
@@ -103,7 +103,7 @@ final class AnnotationGenerator {
             _return(_myField(_named("toString")))
         ));
         methods[length + 2] = _method(_named("<init>"), _withParameterTypes(fieldTypes), _returnsNothing(), _withBody(
-            _invoke(_invokeSpecialMethod(_ofClass(Object.class), _named("<init>"),
+            _statement(_invokeSpecialMethod(_ofClass(Object.class), _named("<init>"),
                 _withoutParameterTypes(), _returnsNothing(),
                 _on(_this), _withoutParameters()
             )),
@@ -233,9 +233,12 @@ final class AnnotationGenerator {
         if (clazz == String.class) {
             return _string((String) object);
         }
+        if (clazz == Class.class) {
+            return _class((Class) object);
+        }
         if (clazz.isEnum()) {
-            Enum enumObject = (Enum) object;
-            Class enumClass = enumObject.getDeclaringClass();
+            Enum<?> enumObject = (Enum) object;
+            Class<?> enumClass = enumObject.getDeclaringClass();
             return _getStaticField(_ofClass(enumClass), _named(enumObject.name()), _withType(enumClass));
         }
         throw new ImpossibleError("Impossible value in annotation. Value class is " + clazz.getName());
