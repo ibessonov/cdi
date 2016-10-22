@@ -14,17 +14,18 @@ public class ScopedAnnotationCache {
     private static final Map<Class<?>, Scope> cache = new WeakHashMap<>();
 
     public static synchronized Scope getScope(Class<?> clazz) {
-        if (cache.containsKey(clazz)) {
-            return cache.get(clazz);
-        }
-        Scoped scoped = clazz.getAnnotation(Scoped.class);
-        if (scoped == null) {
-            cache.put(clazz, null);
-            return null;
-        } else {
-            Scope scope = scoped.value();
-            cache.put(clazz, scope);
+        Scope scope = cache.get(clazz);
+        if (scope != null) {
             return scope;
         }
+        if (cache.containsKey(clazz)) {
+            return null;
+        }
+        Scoped scoped = clazz.getAnnotation(Scoped.class);
+        if (scoped != null) {
+            scope = scoped.value();
+        }
+        cache.put(clazz, scope);
+        return scope;
     }
 }

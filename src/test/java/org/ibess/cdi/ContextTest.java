@@ -22,7 +22,6 @@ import java.util.function.Supplier;
 
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
-import static java.lang.invoke.MethodHandles.explicitCastArguments;
 import static java.lang.invoke.MethodHandles.filterReturnValue;
 import static java.lang.invoke.MethodType.methodType;
 import static java.util.Arrays.asList;
@@ -78,7 +77,7 @@ public class ContextTest extends CdiTest {
             });
             registrar.registerMethodTransformer(Traced.class, (handle, method, annotation) -> {
                 Class<?> returnType = handle.type().returnType();
-                return filterReturnValue(handle, explicitCastArguments(returnedHandle, methodType(returnType, returnType)));
+                return filterReturnValue(handle, returnedHandle.asType(methodType(returnType, returnType)));
             });
         }
 

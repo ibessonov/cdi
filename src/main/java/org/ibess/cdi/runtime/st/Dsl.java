@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.ibess.cdi.util.BoxingUtil.box;
+import static org.ibess.cdi.util.ClassUtil.isPrimitive;
 
 /**
  * @author ibessonov
@@ -333,7 +334,7 @@ public class Dsl {
     }
 
     public static StExpression _class(Class<?> clazz) {
-        if (clazz.isPrimitive()) {
+        if (isPrimitive(clazz)) {
             return _getStaticField(box(clazz).getName(), _named("TYPE"), _withType(Class.class));
         }
         return new StClassExpression(clazz);

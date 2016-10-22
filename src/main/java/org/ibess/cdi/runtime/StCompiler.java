@@ -10,6 +10,7 @@ import java.lang.invoke.MethodType;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.ibess.cdi.util.ClassUtil.isPrimitive;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
 import static org.objectweb.asm.Opcodes.*;
@@ -305,7 +306,7 @@ public class StCompiler implements StVisitor {
         StExpression[] elements = arrayExpression.elements;
         visitIntConstantExpression(elements.length, int.class);
         Class<?> type = arrayExpression.type;
-        if (type.isPrimitive()) {
+        if (isPrimitive(type)) {
             mv.visitIntInsn(NEWARRAY, newArrayTypeOpcode(type));
         } else {
             mv.visitTypeInsn(ANEWARRAY, getInternalName(type));
@@ -361,7 +362,7 @@ public class StCompiler implements StVisitor {
     }
 
     private static int opcodeOffset(Class<?> type) {
-        if (type == null || !type.isPrimitive()) return 4;
+        if (type == null || !isPrimitive(type)) return 4;
         switch (type.getName()) {
             case "long":   return 1;
             case "float":  return 2;
@@ -371,7 +372,7 @@ public class StCompiler implements StVisitor {
     }
 
     private int astoreOpcode(Class<?> type) {
-        if (!type.isPrimitive()) return AASTORE;
+        if (!isPrimitive(type)) return AASTORE;
         switch (type.getName()) {
             case "boolean":
             case "byte"   : return BASTORE;

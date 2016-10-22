@@ -4,10 +4,10 @@ import org.ibess.cdi.Context;
 import org.ibess.cdi.enums.Scope;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
-import org.ibess.cdi.util.ScopedAnnotationCache;
 
 import static org.ibess.cdi.enums.CdiErrorType.GENERIC_PARAMETERS_COUNT_MISMATCH;
 import static org.ibess.cdi.internal.$Descriptor.$0;
+import static org.ibess.cdi.util.ScopedAnnotationCache.getScope;
 
 /**
  * Extended {@link Context} functionality for looking up generic classes.
@@ -17,7 +17,7 @@ import static org.ibess.cdi.internal.$Descriptor.$0;
 public interface $Context extends Context {
 
     default <T> T $lookup($Descriptor<T> d) {
-        Scope scope = ScopedAnnotationCache.getScope(d.c);
+        Scope scope = getScope(d.c);
         if (scope == null) {
             return $unscoped(d.c);
         } else switch (scope) {
@@ -38,7 +38,7 @@ public interface $Context extends Context {
      */
     @Override
     default <T> T lookup(Class<T> clazz) {
-        Scope scope = ScopedAnnotationCache.getScope(clazz);
+        Scope scope = getScope(clazz);
         if (scope != null && clazz.getTypeParameters().length != 0) {
             throw new CdiException(GENERIC_PARAMETERS_COUNT_MISMATCH,
                     clazz.getCanonicalName(), clazz.getTypeParameters().length, 0);

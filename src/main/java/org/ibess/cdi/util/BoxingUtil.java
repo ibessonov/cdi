@@ -1,78 +1,75 @@
 package org.ibess.cdi.util;
 
-import org.ibess.cdi.runtime.st.StExpression;
+import org.ibess.cdi.exceptions.ImpossibleError;
 
-import java.lang.reflect.Method;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 
-import static org.ibess.cdi.runtime.st.Dsl.*;
+import static java.lang.invoke.MethodHandles.*;
+import static java.lang.invoke.MethodType.methodType;
 
 /**
  * @author ibessonov
  */
 public final class BoxingUtil {
 
-    private static final Method zValueOf;
-    private static final Method bValueOf;
-    private static final Method cValueOf;
-    private static final Method sValueOf;
-    private static final Method iValueOf;
-    private static final Method jValueOf;
-    private static final Method fValueOf;
-    private static final Method dValueOf;
+    public static final MethodHandle IDENTITY = identity(Object.class); //TODO move
 
-    private static final Method zValue;
-    private static final Method bValue;
-    private static final Method cValue;
-    private static final Method sValue;
-    private static final Method iValue;
-    private static final Method jValue;
-    private static final Method fValue;
-    private static final Method dValue;
+    private static final MethodHandle zValueOf;
+    private static final MethodHandle bValueOf;
+    private static final MethodHandle cValueOf;
+    private static final MethodHandle sValueOf;
+    private static final MethodHandle iValueOf;
+    private static final MethodHandle jValueOf;
+    private static final MethodHandle fValueOf;
+    private static final MethodHandle dValueOf;
+
+    private static final MethodHandle zValue;
+    private static final MethodHandle bValue;
+    private static final MethodHandle cValue;
+    private static final MethodHandle sValue;
+    private static final MethodHandle iValue;
+    private static final MethodHandle jValue;
+    private static final MethodHandle fValue;
+    private static final MethodHandle dValue;
 
     static {
         try {
-            zValueOf = Boolean  .class.getDeclaredMethod("valueOf", boolean.class);
-            bValueOf = Byte     .class.getDeclaredMethod("valueOf", byte.class);
-            cValueOf = Character.class.getDeclaredMethod("valueOf", char.class);
-            sValueOf = Short    .class.getDeclaredMethod("valueOf", short.class);
-            iValueOf = Integer  .class.getDeclaredMethod("valueOf", int.class);
-            jValueOf = Long     .class.getDeclaredMethod("valueOf", long.class);
-            fValueOf = Float    .class.getDeclaredMethod("valueOf", float.class);
-            dValueOf = Double   .class.getDeclaredMethod("valueOf", double.class);
+            MethodHandles.Lookup lookup = publicLookup();
+            zValueOf = lookup.unreflect(Boolean  .class.getDeclaredMethod("valueOf", boolean.class)).asType(methodType(Object.class, boolean.class));
+            bValueOf = lookup.unreflect(Byte     .class.getDeclaredMethod("valueOf", byte.class   )).asType(methodType(Object.class, byte.class   ));
+            cValueOf = lookup.unreflect(Character.class.getDeclaredMethod("valueOf", char.class   )).asType(methodType(Object.class, char.class   ));
+            sValueOf = lookup.unreflect(Short    .class.getDeclaredMethod("valueOf", short.class  )).asType(methodType(Object.class, short.class  ));
+            iValueOf = lookup.unreflect(Integer  .class.getDeclaredMethod("valueOf", int.class    )).asType(methodType(Object.class, int.class    ));
+            jValueOf = lookup.unreflect(Long     .class.getDeclaredMethod("valueOf", long.class   )).asType(methodType(Object.class, long.class   ));
+            fValueOf = lookup.unreflect(Float    .class.getDeclaredMethod("valueOf", float.class  )).asType(methodType(Object.class, float.class  ));
+            dValueOf = lookup.unreflect(Double   .class.getDeclaredMethod("valueOf", double.class )).asType(methodType(Object.class, double.class ));
 
-            zValue   = Boolean  .class.getDeclaredMethod("booleanValue");
-            bValue   = Byte     .class.getDeclaredMethod("byteValue");
-            cValue   = Character.class.getDeclaredMethod("charValue");
-            sValue   = Short    .class.getDeclaredMethod("shortValue");
-            iValue   = Integer  .class.getDeclaredMethod("intValue");
-            jValue   = Long     .class.getDeclaredMethod("longValue");
-            fValue   = Float    .class.getDeclaredMethod("floatValue");
-            dValue   = Double   .class.getDeclaredMethod("doubleValue");
-        } catch (NoSuchMethodException e) {
-            throw new ExceptionInInitializerError(e);
+            zValue   = filterReturnValue(IDENTITY.asType(methodType(Boolean  .class, Object.class)), lookup.unreflect(Boolean  .class.getDeclaredMethod("booleanValue")));
+            bValue   = filterReturnValue(IDENTITY.asType(methodType(Byte     .class, Object.class)), lookup.unreflect(Byte     .class.getDeclaredMethod("byteValue"   )));
+            cValue   = filterReturnValue(IDENTITY.asType(methodType(Character.class, Object.class)), lookup.unreflect(Character.class.getDeclaredMethod("charValue"   )));
+            sValue   = filterReturnValue(IDENTITY.asType(methodType(Short    .class, Object.class)), lookup.unreflect(Short    .class.getDeclaredMethod("shortValue"  )));
+            iValue   = filterReturnValue(IDENTITY.asType(methodType(Integer  .class, Object.class)), lookup.unreflect(Integer  .class.getDeclaredMethod("intValue"    )));
+            jValue   = filterReturnValue(IDENTITY.asType(methodType(Long     .class, Object.class)), lookup.unreflect(Long     .class.getDeclaredMethod("longValue"   )));
+            fValue   = filterReturnValue(IDENTITY.asType(methodType(Float    .class, Object.class)), lookup.unreflect(Float    .class.getDeclaredMethod("floatValue"  )));
+            dValue   = filterReturnValue(IDENTITY.asType(methodType(Double   .class, Object.class)), lookup.unreflect(Double   .class.getDeclaredMethod("doubleValue" )));
+        } catch (Throwable throwable) {
+            throw new ExceptionInInitializerError(throwable);
         }
     }
 
-    public static StExpression box(Class<?> primitive, StExpression expression) {
+    public static MethodHandle boxHandle(Class<?> primitive) {
         switch (primitive.getName()) {
-            case "boolean":
-                return _invokeStaticMethod(zValueOf, _withParameters(expression));
-            case "byte":
-                return _invokeStaticMethod(bValueOf, _withParameters(expression));
-            case "char":
-                return _invokeStaticMethod(cValueOf, _withParameters(expression));
-            case "short":
-                return _invokeStaticMethod(sValueOf, _withParameters(expression));
-            case "int":
-                return _invokeStaticMethod(iValueOf, _withParameters(expression));
-            case "long":
-                return _invokeStaticMethod(jValueOf, _withParameters(expression));
-            case "float":
-                return _invokeStaticMethod(fValueOf, _withParameters(expression));
-            case "double":
-                return _invokeStaticMethod(dValueOf, _withParameters(expression));
+            case "boolean": return zValueOf;
+            case "byte":    return bValueOf;
+            case "char":    return cValueOf;
+            case "short":   return sValueOf;
+            case "int":     return iValueOf;
+            case "long":    return jValueOf;
+            case "float":   return fValueOf;
+            case "double":  return dValueOf;
+            default: throw new ImpossibleError("Unknown primitive type: " + primitive);
         }
-        return expression;
     }
 
     public static Class<?> box(Class<?> primitive) {
@@ -90,26 +87,18 @@ public final class BoxingUtil {
         return primitive;
     }
 
-    public static StExpression unbox(Class<?> primitive, StExpression expression) {
+    public static MethodHandle unboxHandle(Class<?> primitive) {
         switch (primitive.getName()) {
-            case "boolean":
-                return _invokeVirtualMethod(zValue, _cast(Boolean  .class, expression), _withoutParameters());
-            case "byte":
-                return _invokeVirtualMethod(bValue, _cast(Byte     .class, expression), _withoutParameters());
-            case "char":
-                return _invokeVirtualMethod(cValue, _cast(Character.class, expression), _withoutParameters());
-            case "short":
-                return _invokeVirtualMethod(sValue, _cast(Short    .class, expression), _withoutParameters());
-            case "int":
-                return _invokeVirtualMethod(iValue, _cast(Integer  .class, expression), _withoutParameters());
-            case "long":
-                return _invokeVirtualMethod(jValue, _cast(Long     .class, expression), _withoutParameters());
-            case "float":
-                return _invokeVirtualMethod(fValue, _cast(Float    .class, expression), _withoutParameters());
-            case "double":
-                return _invokeVirtualMethod(dValue, _cast(Double   .class, expression), _withoutParameters());
+            case "boolean": return zValue;
+            case "byte":    return bValue;
+            case "char":    return cValue;
+            case "short":   return sValue;
+            case "int":     return iValue;
+            case "long":    return jValue;
+            case "float":   return fValue;
+            case "double":  return dValue;
+            default: throw new ImpossibleError("Unknown primitive type: " + primitive);
         }
-        return expression;
     }
 
     public static Class<?> unbox(Class<?> boxed) {

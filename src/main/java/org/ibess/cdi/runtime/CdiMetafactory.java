@@ -15,6 +15,8 @@ import java.util.regex.Pattern;
 
 import static java.lang.invoke.MethodHandles.*;
 import static java.lang.invoke.MethodType.methodType;
+import static org.ibess.cdi.util.BoxingUtil.*;
+import static org.ibess.cdi.util.ClassUtil.isPrimitive;
 import static org.ibess.cdi.util.CollectionUtil.drop;
 
 /**
@@ -110,8 +112,7 @@ public class CdiMetafactory {
             Class<?>[] parameterTypes = method.getParameterTypes();
             for (int i = 0, parametersCount = parameterTypes.length; i < parametersCount; i++) {
                 Class<?> parameterType = parameterTypes[i];
-                MethodHandle transform = MethodHandles.identity(Object.class);
-                boolean transformed = false;
+                MethodHandle transform = null;
                 for (Annotation annotation : parameterAnnotations[i]) { //TODO check order
                     if (context.valueTransformerRegistered(annotation.annotationType())) {
                         MethodHandle transformBind = transformHandle
@@ -119,13 +120,15 @@ public class CdiMetafactory {
                                 .bindTo(annotation)
                                 .bindTo(parameterType);
 
-                        transformed = true;
-                        transform = filterArguments(transform, 0, transformBind);
+                        if (transform == null) {
+                            transform = transformBind;
+                        } else {
+                            transform = filterArguments(transform, 0, transformBind);
+                        }
                     }
                 }
-                if (transformed) {
-                    methodHandle = filterArguments(methodHandle, i + 1,
-                            transform.asType(methodType(parameterType, parameterType))); //TODO optimize
+                if (transform != null) {
+                    methodHandle = filterArguments(methodHandle, i + 1, cast(transform, parameterType));
                 }
             }
         }
@@ -146,8 +149,7 @@ public class CdiMetafactory {
         }
 
         if (!voidReturnType) {
-            MethodHandle transform = MethodHandles.identity(Object.class);
-            boolean transformed = false;
+            MethodHandle transform = null;
             for (Annotation annotation : methodAnnotations) {
                 if (context.valueTransformerRegistered(annotation.annotationType())) {
                     MethodHandle transformBind = transformHandle
@@ -155,23 +157,32 @@ public class CdiMetafactory {
                             .bindTo(annotation)
                             .bindTo(returnType);
 
-                    transformed = true;
-                    transform = filterArguments(transform, 0, transformBind);
+                    if (transform == null) {
+                        transform = transformBind;
+                    } else {
+                        transform = filterArguments(transform, 0, transformBind);
+                    }
                 }
             }
-            if (transformed) {
-                methodHandle = filterReturnValue(methodHandle, transform.asType(methodType(returnType, returnType)));
+            if (transform != null) {
+                methodHandle = filterReturnValue(methodHandle, cast(transform, returnType));
             }
         }
 
         return methodHandle;
     }
 
-//    private MethodHandle castParameterType(MethodHandle methodHandle, Class<?> originalType) {
-//
-//    }
+    private static MethodHandle cast(MethodHandle target, Class<?> type) {
+        target = filterArguments(target, 0, toObjectFilter(type));
+        target = filterReturnValue(target, fromObjectFilter(type));
+        return target;
+    }
 
-//    private MethodHandle castReturnType(MethodHandle methodHandle, Class<?> originalType) {
-//
-//    }
+    private static MethodHandle toObjectFilter(Class<?> type) {
+        return isPrimitive(type) ? boxHandle(type) : identity(type).asType(methodType(Object.class, type));
+    }
+
+    private static MethodHandle fromObjectFilter(Class<?> type) {
+        return isPrimitive(type) ? unboxHandle(type) : IDENTITY.asType(methodType(type, Object.class));
+    }
 }

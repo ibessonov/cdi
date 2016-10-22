@@ -12,7 +12,6 @@ import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.internal.$Instantiator;
 import org.ibess.cdi.runtime.st.*;
 import org.ibess.cdi.util.CollectionUtil;
-import org.ibess.cdi.util.ScopedAnnotationCache;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
@@ -28,6 +27,7 @@ import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
 import static org.ibess.cdi.runtime.StCompiler.compile;
 import static org.ibess.cdi.runtime.st.Dsl.*;
+import static org.ibess.cdi.util.ScopedAnnotationCache.getScope;
 
 /**
  * @author ibessonov
@@ -92,7 +92,7 @@ final class InheritorGenerator {
         if (clazz.getEnclosingClass() != null && !isStatic(clazz.getModifiers())) {
             // throw
         }
-        Scope scope = ScopedAnnotationCache.getScope(clazz);
+        Scope scope = getScope(clazz);
         if (scope != STATELESS && clazz.getTypeParameters().length > 0) {
             throw new CdiException(PARAMETERIZED_NON_STATELESS, clazz.getCanonicalName());
         }
@@ -336,7 +336,7 @@ final class InheritorGenerator {
             param = getTypeVariableDescriptor(ci, (TypeVariable) type);
             rawClass = Object.class;
         } else {
-            Scope scope = ScopedAnnotationCache.getScope(rawClass);
+            Scope scope = getScope(rawClass);
             if (scope == null) {
                 method = $unscoped;
                 param = _class(rawClass);
