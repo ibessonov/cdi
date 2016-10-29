@@ -28,6 +28,14 @@ final class CdiClassLoader extends ClassLoader {
         return defineClass0(SYSTEM_CLASS_LOADER, bytes);
     }
 
+    public static ClassLoader getClassLoader(Class<?> clazz) {
+        if (System.getSecurityManager() == null) {
+            return clazz.getClassLoader();
+        } else {
+            return doPrivileged((PrivilegedAction<ClassLoader>) clazz::getClassLoader);
+        }
+    }
+
     private static ClassLoader getSystemClassLoader0() {
         if (System.getSecurityManager() == null) {
             return getSystemClassLoader();
@@ -50,21 +58,21 @@ final class CdiClassLoader extends ClassLoader {
             }
             return publicLookup().unreflect(method);
         } catch (Throwable throwable) {
-            return throwUnchecked(throwable);
+            return throw0(throwable);
         }
     }
 
     @SuppressWarnings("unchecked")
     private static <T> Class<T> defineClass0(ClassLoader classLoader, byte[] bytes) {
         try {
-            return (Class<T>) DEFINE_CLASS_METHOD_HANDLE.invokeExact(classLoader, NAME, bytes, 0, bytes.length);
+            return (Class) DEFINE_CLASS_METHOD_HANDLE.invokeExact(classLoader, NAME, bytes, 0, bytes.length);
         } catch (Throwable throwable) {
-            return throwUnchecked(throwable);
+            return throw0(throwable);
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends Throwable, Nothing> Nothing throwUnchecked(Throwable throwable) throws T {
+    private static <T extends Throwable, Nothing> Nothing throw0(Throwable throwable) throws T {
         throw (T) (throwable == null ? new IllegalArgumentException("Attempt to throw null") : throwable);
     }
 }

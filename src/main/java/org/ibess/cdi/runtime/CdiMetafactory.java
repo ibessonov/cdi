@@ -42,30 +42,20 @@ public class CdiMetafactory {
         contexts.put(context.contextId, new WeakReference<>(context));
     }
 
-    @SuppressWarnings("unused")
-    public static CallSite override(MethodHandles.Lookup caller,
-                                    String invokedName,
-                                    MethodType invokedType) {
-        Class<?> callerClass = invokedType.parameterArray()[0];
-        Method method = findMethod(invokedName, invokedType);
-        try {
-            MethodHandle methodHandle = caller.unreflectSpecial(method, callerClass);
-            return new ConstantCallSite(transform(findContext(callerClass), method, methodHandle));
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @SuppressWarnings("unused")
     public static CallSite implement(MethodHandles.Lookup caller,
                                      String invokedName,
                                      MethodType invokedType,
                                      String generatedName) {
         Class<?> callerClass = invokedType.parameterArray()[0];
         Method method = findMethod(invokedName, invokedType);
-        MethodType shortenedType = invokedType.dropParameterTypes(0, 1);
         try {
-            MethodHandle methodHandle = caller.findSpecial(callerClass, generatedName, shortenedType, callerClass);
+            MethodHandle methodHandle;
+            if (invokedName.equals(generatedName)) {
+                methodHandle = caller.unreflectSpecial(method, callerClass);
+            } else {
+                MethodType shortenedType = invokedType.dropParameterTypes(0, 1);
+                methodHandle = caller.findSpecial(callerClass, generatedName, shortenedType, callerClass);
+            }
             return new ConstantCallSite(transform(findContext(callerClass), method, methodHandle));
         } catch (NoSuchMethodException e) {
             throw new ImpossibleError(e);
@@ -142,7 +132,7 @@ public class CdiMetafactory {
                 MethodTransformer methodTransformer = context.getMethodTransformer(annotation.annotationType());
                 if (methodTransformer != null) {
                     //noinspection unchecked
-                    methodHandle = methodTransformer.transform(methodHandle, method, annotation);
+                    methodHandle = methodTransformer.transform(annotation, method, methodHandle);
                     assert methodType.equals(methodHandle.type());
                 }
             }

@@ -75,7 +75,7 @@ public class ContextTest extends CdiTest {
                     throw new IllegalArgumentException(clazz.getName());
                 }
             });
-            registrar.registerMethodTransformer(Traced.class, (handle, method, annotation) -> {
+            registrar.registerMethodTransformer(Traced.class, (annotation, method, handle) -> {
                 Class<?> returnType = handle.type().returnType();
                 return filterReturnValue(handle, returnedHandle.asType(methodType(returnType, returnType)));
             });

@@ -2,15 +2,19 @@ package org.ibess.cdi.runtime;
 
 import org.ibess.cdi.runtime.st.*;
 import org.objectweb.asm.*;
-import org.objectweb.asm.Type;
 
+import java.io.InputStream;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.ibess.cdi.runtime.CdiClassLoader.getClassLoader;
 import static org.ibess.cdi.util.ClassUtil.isPrimitive;
+import static org.objectweb.asm.ClassReader.SKIP_DEBUG;
+import static org.objectweb.asm.ClassReader.SKIP_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
 import static org.objectweb.asm.Opcodes.*;
@@ -88,8 +92,6 @@ public class StCompiler implements StVisitor {
         }
         Type returnType = getType(method.returnType);
         int modifiers = method.isStatic ? ACC_STATIC | ACC_PUBLIC : ACC_PUBLIC;
-        mv = cw.visitMethod(modifiers, method.name, getMethodDescriptor(returnType, types), null, null);
-        mv.visitCode();
 
         parameters = method.parameters;
         offsets = new int[parameters.length];
@@ -98,7 +100,14 @@ public class StCompiler implements StVisitor {
                     + (parameters[i - 1] == long.class || parameters[i - 1] == double.class ? 1 : 0);
         }
         this.returnType = method.returnType;
-        method.statement.accept(this);
+
+        mv = cw.visitMethod(modifiers, method.name, getMethodDescriptor(returnType, types), null, null);
+        mv.visitCode();
+        if (method instanceof StTailRecMethod) {
+            visitStTailRecMethod((StTailRecMethod) method, method.name, getMethodDescriptor(returnType, types));
+        } else {
+            method.statement.accept(this);
+        }
         this.returnType = null;
         offsets = null;
         parameters = null;
@@ -416,5 +425,92 @@ public class StCompiler implements StVisitor {
             case "double" : return "D";
         }
         return "L" + internal(name) + ";";
+    }
+
+    /*
+     ********************************************************************************
+     *                             TailRec related stuff                            *
+     ********************************************************************************
+     */
+
+    private static class StTailRecMethod extends StMethod {
+
+        private final Method method;
+
+        public StTailRecMethod(Method method, String name) {
+            super(false, name, method.getParameterTypes(), method.getReturnType(), null);
+            this.method = method;
+        }
+    }
+
+    public static StMethod _tailRecMethod(Method method, String name) {
+        return new StTailRecMethod(method, name);
+    }
+
+    private void visitStTailRecMethod(StTailRecMethod tailRecMethod, String tailRecName, String tailRecDescriptor) {
+        Class<?> declaringClass = tailRecMethod.method.getDeclaringClass();
+        String tailRecOwner = internal(declaringClass.getName());
+        InputStream is = getClassLoader(declaringClass).getResourceAsStream(tailRecOwner + ".class");
+        Exception exception = null;
+        if (is != null) {
+            try {
+                ClassReader cr = new ClassReader(is);
+                cr.accept(new ClassVisitor(ASM5) {
+                    @Override
+                    public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+                        if (name.equals(tailRecName) && desc.equals(tailRecDescriptor)) {
+                            return new TailRecMethodVisitor(tailRecOwner, tailRecName, tailRecDescriptor, mv);
+                        }
+                        return super.visitMethod(access, name, desc, signature, exceptions);
+                    }
+                }, SKIP_DEBUG | SKIP_FRAMES);
+                return;
+            } catch (Exception e) {
+                exception = e;
+            }
+        }
+        throw new RuntimeException("Cannot load bytecode for class " + declaringClass.getName(), exception);
+    }
+
+    private class TailRecMethodVisitor extends MethodVisitor {
+
+        private final Label methodStart = new Label();
+        private final String tailRecOwner;
+        private final String tailRecName;
+        private final String tailRecDescriptor;
+
+        public TailRecMethodVisitor(String tailRecOwner, String tailRecName, String tailRecDescriptor, MethodVisitor mv) {
+            super(ASM5, mv);
+            this.tailRecOwner = tailRecOwner;
+
+            this.tailRecName = tailRecName;
+            this.tailRecDescriptor = tailRecDescriptor;
+        }
+
+        @Override
+        public void visitCode() {
+            mv.visitLabel(methodStart);
+        }
+
+        @Override
+        public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) {
+            if (owner.equals(tailRecOwner) && name.equals(tailRecName) && desc.equals(tailRecDescriptor)) {
+                for (int i = parameters.length - 1; i >= 0; i--) {
+                    mv.visitVarInsn(storeOpcode(parameters[i]), offsets[i] + 1);
+                }
+                mv.visitInsn(POP);
+                mv.visitJumpInsn(GOTO, methodStart);
+            } else {
+                mv.visitMethodInsn(opcode, owner, name, desc, itf);
+            }
+        }
+
+        @Override
+        public void visitMaxs(int maxStack, int maxLocals) {
+        }
+
+        @Override
+        public void visitEnd() {
+        }
     }
 }

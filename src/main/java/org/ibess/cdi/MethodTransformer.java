@@ -10,5 +10,5 @@ import java.lang.reflect.Method;
 @FunctionalInterface
 public interface MethodTransformer<T extends Annotation> {
 
-    MethodHandle transform(MethodHandle handle, Method method, T annotation);
+    MethodHandle transform(T annotation, Method method, MethodHandle handle);
 }

@@ -68,7 +68,7 @@ public final class BoxingUtil {
             case "long":    return jValueOf;
             case "float":   return fValueOf;
             case "double":  return dValueOf;
-            default: throw new ImpossibleError("Unknown primitive type: " + primitive);
+            default: throw new ImpossibleError("Can't box type: " + primitive);
         }
     }
 
@@ -97,7 +97,7 @@ public final class BoxingUtil {
             case "long":    return jValue;
             case "float":   return fValue;
             case "double":  return dValue;
-            default: throw new ImpossibleError("Unknown primitive type: " + primitive);
+            default: throw new ImpossibleError("Can't unbox type: " + primitive);
         }
     }
 

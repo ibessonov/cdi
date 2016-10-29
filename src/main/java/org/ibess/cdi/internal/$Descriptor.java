@@ -36,7 +36,7 @@ public final class $Descriptor<T> {
     public boolean equals(Object obj) {
         if (!(obj instanceof $Descriptor)) return false;
 
-        $Descriptor<?> that = ($Descriptor<?>) obj;
+        $Descriptor<?> that = ($Descriptor) obj;
         return this.h == that.h && this.c == that.c && equals(this.p, that.p);
     }
 
