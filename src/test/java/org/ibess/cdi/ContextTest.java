@@ -265,7 +265,7 @@ public class ContextTest extends CdiTest {
         assertEquals(asList(value0, value1), TestExtension.returned);
     }
 
-    @Test(timeout = 200)
+    @Test(timeout = 150)
     public void performance() {
         $Descriptor descriptor = $(InjectedClass.class, $0(String.class), $0(List.class));
         for (int i = 0; i < 100000; i++) {

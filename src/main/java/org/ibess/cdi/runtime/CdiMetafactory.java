@@ -103,7 +103,7 @@ public class CdiMetafactory {
             for (int i = 0, parametersCount = parameterTypes.length; i < parametersCount; i++) {
                 Class<?> parameterType = parameterTypes[i];
                 MethodHandle transform = null;
-                for (Annotation annotation : parameterAnnotations[i]) { //TODO check order
+                for (Annotation annotation : parameterAnnotations[i]) {
                     if (context.valueTransformerRegistered(annotation.annotationType())) {
                         MethodHandle transformBind = transformHandle
                                 .bindTo(context.getValueTransformer(annotation.annotationType()))

@@ -3,7 +3,6 @@ package org.ibess.cdi.runtime;
 import org.ibess.cdi.Context;
 import org.ibess.cdi.annotations.Inject;
 import org.ibess.cdi.annotations.Scoped;
-import org.ibess.cdi.annotations.ex.TailRec;
 import org.ibess.cdi.enums.Scope;
 import org.ibess.cdi.exceptions.CdiException;
 import org.ibess.cdi.exceptions.ImpossibleError;
@@ -26,7 +25,6 @@ import static java.util.stream.Stream.concat;
 import static org.ibess.cdi.enums.CdiErrorType.*;
 import static org.ibess.cdi.enums.Scope.STATELESS;
 import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
-import static org.ibess.cdi.runtime.StCompiler._tailRecMethod;
 import static org.ibess.cdi.runtime.StCompiler.compile;
 import static org.ibess.cdi.runtime.st.Dsl.*;
 import static org.ibess.cdi.util.ScopedAnnotationCache.getScope;
@@ -159,34 +157,12 @@ final class InheritorGenerator {
                 params.add(_methodParam(index));
                 paramTypes.add(methodParameterTypes[index]);
             }
-            if (method.isAnnotationPresent(TailRec.class)) {
-                //TODO and this code is copy-pasted from "implement" method
-                String generatedName = method.getName() + ci.newMethodName();
 
-                Type genericReturnType = method.getGenericReturnType();
-                boolean voidReturnType = (genericReturnType == void.class);
-                if (!voidReturnType) {
-                    validateLookup(ci, genericReturnType);
-                }
-
-                StExpression invokeDynamic = _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
-                        "implement", CdiMetafactory.class, _withParameters(_expressions(params)), generatedName
-                );
-                StMethod transformedMethod = generateTransformedMethod(ci, method, invokeDynamic);
-                if (transformedMethod != null) {
-                    StMethod generatedMethod = _tailRecMethod(method, generatedName);
-                    methods.add(generatedMethod);
-                    methods.add(transformedMethod);
-                } else {
-                    methods.add(_tailRecMethod(method, method.getName()));
-                }
-            } else {
-                CollectionUtil.addIfNotNull(methods, generateTransformedMethod(ci, method,
-                    _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
-                        "implement", CdiMetafactory.class, _withParameters(_expressions(params)), method.getName()
-                    )
-                ));
-            }
+            CollectionUtil.addIfNotNull(methods, generateTransformedMethod(ci, method,
+                _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
+                    "implement", CdiMetafactory.class, _withParameters(_expressions(params)), method.getName()
+                )
+            ));
         }
 
         methods.add(_staticMethod(_named("<clinit>"), _withoutParameterTypes(), _returnsNothing(), _withBody(
