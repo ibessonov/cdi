@@ -1,4 +1,4 @@
 .idea
 target
 cdi.iml
-src/main/java/org/ibess/sample/*
+src/main/sample/*
