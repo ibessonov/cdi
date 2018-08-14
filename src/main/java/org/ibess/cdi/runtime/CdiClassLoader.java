@@ -1,5 +1,8 @@
 package org.ibess.cdi.runtime;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.security.PrivilegedAction;
@@ -15,6 +18,7 @@ final class CdiClassLoader extends ClassLoader {
     private static final ClassLoader SYSTEM_CLASS_LOADER = getSystemClassLoader0();
     private static final MethodHandle DEFINE_CLASS_METHOD_HANDLE = getDefineClassMethodHandle();
     private static final String NAME = null;
+    private static final boolean LOG_GENERATED_CLASSES = Boolean.getBoolean("cdi.log.generated.classes");
 
     /**
      * Defines Java class by its bytecode. System ClassLoader is used to load the class
@@ -65,7 +69,19 @@ final class CdiClassLoader extends ClassLoader {
     @SuppressWarnings("unchecked")
     private static <T> Class<T> defineClass0(ClassLoader classLoader, byte[] bytes) {
         try {
-            return (Class) DEFINE_CLASS_METHOD_HANDLE.invokeExact(classLoader, NAME, bytes, 0, bytes.length);
+            Class<?> clazz = (Class<?>) DEFINE_CLASS_METHOD_HANDLE.invokeExact(classLoader, NAME, bytes, 0, bytes.length);
+            if (LOG_GENERATED_CLASSES) {
+                File generated = new File("generated");
+                //noinspection ResultOfMethodCallIgnored
+                generated.mkdirs();
+                File file = new File(generated, clazz.getCanonicalName() + ".class");
+                if (file.createNewFile()) {
+                    try (OutputStream out = new FileOutputStream(file)) {
+                        out.write(bytes);
+                    }
+                }
+            }
+            return (Class<T>) clazz;
         } catch (Throwable throwable) {
             return throw0(throwable);
         }

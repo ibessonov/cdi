@@ -3,19 +3,17 @@ package org.ibess.cdi.runtime;
 import org.ibess.cdi.MethodTransformer;
 import org.ibess.cdi.ValueTransformer;
 import org.ibess.cdi.exceptions.ImpossibleError;
+import org.ibess.cdi.internal.$Context;
 
 import java.lang.annotation.Annotation;
 import java.lang.invoke.*;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static java.lang.invoke.MethodHandles.*;
 import static java.lang.invoke.MethodType.methodType;
-import static org.ibess.cdi.util.BoxingUtil.*;
+import static org.ibess.cdi.runtime.ContextImpl.findContext;
+import static org.ibess.cdi.util.BoxingUtil.boxHandle;
+import static org.ibess.cdi.util.BoxingUtil.unboxHandle;
 import static org.ibess.cdi.util.ClassUtil.isPrimitive;
 import static org.ibess.cdi.util.CollectionUtil.drop;
 
@@ -24,7 +22,7 @@ import static org.ibess.cdi.util.CollectionUtil.drop;
  */
 public class CdiMetafactory {
 
-    private static final Map<String, WeakReference<ContextImpl>> contexts = new ConcurrentHashMap<>();
+    private static final MethodHandle IDENTITY = identity(Object.class);
     private static final MethodHandle transformHandle;
 
     static {
@@ -38,15 +36,10 @@ public class CdiMetafactory {
         }
     }
 
-    public static void register(ContextImpl context) {
-        contexts.put(context.contextId, new WeakReference<>(context));
-    }
-
-    public static CallSite implement(MethodHandles.Lookup caller,
-                                     String invokedName,
-                                     MethodType invokedType,
-                                     String generatedName) {
-        Class<?> callerClass = invokedType.parameterArray()[0];
+    @SuppressWarnings("unused")
+    public static CallSite implement(MethodHandles.Lookup caller, String invokedName,
+                                     MethodType invokedType, String generatedName, String contextId) {
+        Class<?> callerClass = invokedType.parameterType(0);
         Method method = findMethod(invokedName, invokedType);
         try {
             MethodHandle methodHandle;
@@ -56,12 +49,19 @@ public class CdiMetafactory {
                 MethodType shortenedType = invokedType.dropParameterTypes(0, 1);
                 methodHandle = caller.findSpecial(callerClass, generatedName, shortenedType, callerClass);
             }
-            return new ConstantCallSite(transform(findContext(callerClass), method, methodHandle));
+            return new ConstantCallSite(transform(findContext(contextId), method, methodHandle));
         } catch (NoSuchMethodException e) {
             throw new ImpossibleError(e);
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @SuppressWarnings("unused")
+    public static CallSite context(MethodHandles.Lookup caller, String invokedName,
+                                   MethodType invokedType, String contextId) {
+        ContextImpl context = findContext(contextId);
+        return new ConstantCallSite(MethodHandles.constant($Context.class, context));
     }
 
     private static Method findMethod(String invokedName, MethodType invokedType) {
@@ -74,24 +74,6 @@ public class CdiMetafactory {
         } catch (NoSuchMethodException e) {
             throw new ImpossibleError(e);
         }
-    }
-
-    private static final Pattern contextPattern = Pattern.compile("\\$Cdi(\\d+)$"); //TODO this smells
-    private static ContextImpl findContext(Class<?> clazz) {
-        Matcher matcher = contextPattern.matcher(clazz.getName());
-        if (matcher.find()) {
-            String contextId = matcher.group(1);
-            WeakReference<ContextImpl> contextReference = contexts.get(contextId);
-            if (contextReference != null) {
-                ContextImpl context = contextReference.get();
-                if (context != null) {
-                    return context;
-                } else {
-                    contexts.remove(contextId);
-                }
-            }
-        }
-        throw new IllegalArgumentException("CdiMetafactory cannot find context for class " + clazz);
     }
 
     private static MethodHandle transform(ContextImpl context, Method method, MethodHandle methodHandle) {

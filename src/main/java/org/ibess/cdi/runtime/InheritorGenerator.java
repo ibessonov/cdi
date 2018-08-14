@@ -63,10 +63,12 @@ final class InheritorGenerator {
     private final Map<Class, ClassInfo> registry = new HashMap<>();
 
     private final String contextId;
+    private final String contextHolderName;
 
-    InheritorGenerator(ContextImpl context, String contextId) {
+    InheritorGenerator(ContextImpl context, String contextId, String contextHolderName) {
         this.context = context;
         this.contextId = contextId;
+        this.contextHolderName = contextHolderName;
     }
 
     public Class<?> getSubclass(Class<?> clazz) {
@@ -118,11 +120,11 @@ final class InheritorGenerator {
                         _on(_this), _withoutParameters()
                     ))
                 )),
-                _method(_named("$create"), _withParameterTypes($Context.class, $Descriptor[].class), _returns($CdiObject.class), _withBody(
+                _method(_named("$create"), _withParameterTypes($Descriptor[].class), _returns($CdiObject.class), _withBody(
                     _return(_invokeSpecialMethod(_ofClass(inheritorClassName), _named("<init>"),
-                        _withParameterTypes($Context.class, $Descriptor[].class), _returnsNothing(),
+                        _withParameterTypes($Descriptor[].class), _returnsNothing(),
                         _on(_new(inheritorClassName)),
-                        _withParameters(_dup, _methodParam(0), _methodParam(1))
+                        _withParameters(_dup, _methodParam(0))
                     ))
                 ))
             )
@@ -160,7 +162,7 @@ final class InheritorGenerator {
 
             CollectionUtil.addIfNotNull(methods, generateTransformedMethod(ci, method,
                 _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
-                    "implement", CdiMetafactory.class, _withParameters(_expressions(params)), method.getName()
+                    "implement", CdiMetafactory.class, _withParameters(_expressions(params)), method.getName(), contextId
                 )
             ));
         }
@@ -175,23 +177,18 @@ final class InheritorGenerator {
             ))
         )));
 
-        methods.add(_method(_named("<init>"), _withParameterTypes($Context.class, $Descriptor[].class), _returnsNothing(), _withBody(
+        methods.add(_method(_named("<init>"), _withParameterTypes($Descriptor[].class), _returnsNothing(), _withBody(
             _statement(_invokeSpecialMethod(_ofClass(clazz), _named("<init>"),
                 _withoutParameterTypes(), _returnsNothing(),
                 _on(_this), _withoutParameters()
             )),
-            !ci.x.hasContext ? _noop()
-                : _assignMyField(_named("$c"), _withType($Context.class), _value(_methodParam(0))),
             !ci.x.hasDescriptors ? _noop()
-                : _assignMyField(_named("$d"), _withType($Descriptor[].class), _value(_methodParam(1)))
+                : _assignMyField(_named("$d"), _withType($Descriptor[].class), _value(_methodParam(0)))
         )));
 
         // fields
         List<StField> fields = new ArrayList<>();
         fields.add(_staticField(_named("$i"), _withType($Instantiator.class)));
-        if (ci.x.hasContext) {
-            fields.add(_field(_named("$c"), _withType($Context.class)));
-        }
         if (ci.x.hasDescriptors) {
             fields.add(_field(_named("$d"), _withType($Descriptor[].class)));
         }
@@ -268,7 +265,7 @@ final class InheritorGenerator {
         }
 
         StExpression invokeDynamic = _invokeDynamic(method.getName(), _withParameterTypes(_types(paramTypes)), _returns(method.getReturnType()),
-            "implement", CdiMetafactory.class, _withParameters(_expressions(params)), generatedName
+            "implement", CdiMetafactory.class, _withParameters(_expressions(params)), generatedName, contextId
         );
         StMethod transformedMethod = generateTransformedMethod(ci, method, invokeDynamic);
         if (transformedMethod != null) {
@@ -282,7 +279,7 @@ final class InheritorGenerator {
         return singletonList(_overrideMethod(method, _withBody(voidReturnType ? _noop() : _return(body))));
     }
 
-    private static StStatement[] getConstructorBody(ClassInfo ci) {
+    private StStatement[] getConstructorBody(ClassInfo ci) {
         List<StStatement> statements = new ArrayList<>();
         for (Field field : ci.x.declaredFields) {
             if (injectable(field)) {
@@ -304,10 +301,9 @@ final class InheritorGenerator {
         return _statements(statements);
     }
 
-    private static StExpression getLookupExpression(ClassInfo ci, Type type) {
+    private StExpression getLookupExpression(ClassInfo ci, Type type) {
         if (type == Context.class) {
-            ci.x.hasContext = true;
-            return _myField(_named("$c"));
+            return _context();
         }
         if (type instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -322,7 +318,6 @@ final class InheritorGenerator {
             }
         }
 
-        ci.x.hasContext = true;
         Class<?> rawClass = null;
         if (type instanceof Class) {
             rawClass = (Class) type;
@@ -330,7 +325,6 @@ final class InheritorGenerator {
             rawClass = (Class) ((ParameterizedType) type).getRawType();
         }
 
-        StExpression context = _myField(_named("$c"));
         Method method;
         StExpression param;
         if (rawClass == null) {
@@ -357,7 +351,11 @@ final class InheritorGenerator {
             }
         }
 
-        return _cast(_toClass(rawClass), _invokeInterfaceMethod(method, _on(context), _withParameters(param)));
+        return _cast(_toClass(rawClass), _invokeInterfaceMethod(method, _on(_context()), _withParameters(param)));
+    }
+
+    private StExpression _context() {
+        return _getStaticField(_ofClass(contextHolderName), _named("$context"), _withType($Context.class));
     }
 
     private static StExpression getTypeVariableDescriptor(ClassInfo ci, TypeVariable type) {
@@ -466,7 +464,6 @@ final class InheritorGenerator {
             }
         }
 
-        ci.x.hasContext = true;
         validateType(ci, type);
     }
 
@@ -548,7 +545,6 @@ final class InheritorGenerator {
             public final List<Method> constructors = new ArrayList<>();
             public final List<StClass> stClasses = new ArrayList<>();
 
-            public boolean hasContext = false;
             public boolean hasDescriptors = false;
             public int counter = 0;
 

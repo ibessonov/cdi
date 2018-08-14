@@ -69,8 +69,8 @@ public class ContextTest extends CdiTest {
                 Objects.requireNonNull(object, annotation.value())
             );
             registrar.registerValueTransformer(Trimmed.class, (annotation, clazz, object) -> {
-                if (CharSequence.class.isAssignableFrom(clazz)) {
-                    return object.toString().trim();
+                if (String.class == clazz) {
+                    return ((String) object).trim();
                 } else {
                     throw new IllegalArgumentException(clazz.getName());
                 }

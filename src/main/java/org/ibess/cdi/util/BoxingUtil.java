@@ -13,8 +13,6 @@ import static java.lang.invoke.MethodType.methodType;
  */
 public final class BoxingUtil {
 
-    public static final MethodHandle IDENTITY = identity(Object.class); //TODO move
-
     private static final MethodHandle zValueOf;
     private static final MethodHandle bValueOf;
     private static final MethodHandle cValueOf;
@@ -45,14 +43,15 @@ public final class BoxingUtil {
             fValueOf = lookup.unreflect(Float    .class.getDeclaredMethod("valueOf", float.class  )).asType(methodType(Object.class, float.class  ));
             dValueOf = lookup.unreflect(Double   .class.getDeclaredMethod("valueOf", double.class )).asType(methodType(Object.class, double.class ));
 
-            zValue   = filterReturnValue(IDENTITY.asType(methodType(Boolean  .class, Object.class)), lookup.unreflect(Boolean  .class.getDeclaredMethod("booleanValue")));
-            bValue   = filterReturnValue(IDENTITY.asType(methodType(Byte     .class, Object.class)), lookup.unreflect(Byte     .class.getDeclaredMethod("byteValue"   )));
-            cValue   = filterReturnValue(IDENTITY.asType(methodType(Character.class, Object.class)), lookup.unreflect(Character.class.getDeclaredMethod("charValue"   )));
-            sValue   = filterReturnValue(IDENTITY.asType(methodType(Short    .class, Object.class)), lookup.unreflect(Short    .class.getDeclaredMethod("shortValue"  )));
-            iValue   = filterReturnValue(IDENTITY.asType(methodType(Integer  .class, Object.class)), lookup.unreflect(Integer  .class.getDeclaredMethod("intValue"    )));
-            jValue   = filterReturnValue(IDENTITY.asType(methodType(Long     .class, Object.class)), lookup.unreflect(Long     .class.getDeclaredMethod("longValue"   )));
-            fValue   = filterReturnValue(IDENTITY.asType(methodType(Float    .class, Object.class)), lookup.unreflect(Float    .class.getDeclaredMethod("floatValue"  )));
-            dValue   = filterReturnValue(IDENTITY.asType(methodType(Double   .class, Object.class)), lookup.unreflect(Double   .class.getDeclaredMethod("doubleValue" )));
+            MethodHandle identity = identity(Object.class);
+            zValue   = filterReturnValue(identity.asType(methodType(Boolean  .class, Object.class)), lookup.unreflect(Boolean  .class.getDeclaredMethod("booleanValue")));
+            bValue   = filterReturnValue(identity.asType(methodType(Byte     .class, Object.class)), lookup.unreflect(Byte     .class.getDeclaredMethod("byteValue"   )));
+            cValue   = filterReturnValue(identity.asType(methodType(Character.class, Object.class)), lookup.unreflect(Character.class.getDeclaredMethod("charValue"   )));
+            sValue   = filterReturnValue(identity.asType(methodType(Short    .class, Object.class)), lookup.unreflect(Short    .class.getDeclaredMethod("shortValue"  )));
+            iValue   = filterReturnValue(identity.asType(methodType(Integer  .class, Object.class)), lookup.unreflect(Integer  .class.getDeclaredMethod("intValue"    )));
+            jValue   = filterReturnValue(identity.asType(methodType(Long     .class, Object.class)), lookup.unreflect(Long     .class.getDeclaredMethod("longValue"   )));
+            fValue   = filterReturnValue(identity.asType(methodType(Float    .class, Object.class)), lookup.unreflect(Float    .class.getDeclaredMethod("floatValue"  )));
+            dValue   = filterReturnValue(identity.asType(methodType(Double   .class, Object.class)), lookup.unreflect(Double   .class.getDeclaredMethod("doubleValue" )));
         } catch (Throwable throwable) {
             throw new ExceptionInInitializerError(throwable);
         }

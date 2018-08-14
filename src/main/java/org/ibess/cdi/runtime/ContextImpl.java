@@ -9,6 +9,7 @@ import org.ibess.cdi.internal.$Descriptor;
 import org.ibess.cdi.internal.$Instantiator;
 
 import java.lang.annotation.Annotation;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import java.util.*;
@@ -19,6 +20,9 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.ibess.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
+import static org.ibess.cdi.runtime.CdiClassLoader.defineClass;
+import static org.ibess.cdi.runtime.StCompiler.compile;
+import static org.ibess.cdi.runtime.st.Dsl.*;
 
 /**
  * @author ibessonov
@@ -26,12 +30,13 @@ import static org.ibess.cdi.enums.CdiErrorType.ILLEGAL_ACCESS;
 public final class ContextImpl implements $Context {
 
     private static final AtomicInteger counter = new AtomicInteger();
+    private static final Map<String, WeakReference<ContextImpl>> contexts = new ConcurrentHashMap<>();
 
     final Map<Class, ArrayList<ValueTransformer>> valueTransformers = new HashMap<>();
     final Map<Class, ArrayList<MethodTransformer>> methodTransformers = new HashMap<>();
     final Map<Class, Provider> providers = new HashMap<>();
     final String contextId = Integer.toString(counter.getAndIncrement());
-    final InheritorGenerator generator = new InheritorGenerator(this, contextId);
+    final InheritorGenerator generator;
 
     public ContextImpl(Extension... extensions) {
         if (extensions.length != 0) {
@@ -47,6 +52,35 @@ public final class ContextImpl implements $Context {
                 list.trimToSize();
             }
         }
+        contexts.put(contextId, new WeakReference<>(this));
+
+        String contextHolderName = ContextImpl.class.getPackage() + ".$ContextHolder$" + contextId;
+        defineClass(compile(_class(_named(contextHolderName), _extends(Object.class), _implements(), _withFields(
+            _staticField("$context", $Context.class)
+        ), _withMethods(
+            _staticMethod(_named("<clinit>"), _withoutParameterTypes(), _returnsNothing(), _withBody(
+                _assignStatic(_named("$context"), _ofClass(contextHolderName), _withType($Context.class), _value(
+                    _invokeDynamic("", _withoutParameterTypes(), _returns($Context.class),
+                        "context", CdiMetafactory.class, _withoutParameters(), contextId
+                    )
+                ))
+            ))
+        ))));
+
+        generator = new InheritorGenerator(this, contextId, contextHolderName);
+    }
+
+    public static ContextImpl findContext(String contextId) {
+        WeakReference<ContextImpl> contextReference = contexts.get(contextId);
+        if (contextReference != null) {
+            ContextImpl context = contextReference.get();
+            if (context != null) {
+                return context;
+            } else {
+                contexts.remove(contextId);
+            }
+        }
+        throw new IllegalArgumentException("Unable to find cdi context with id " + contextId);
     }
 
     private class RegistrarImpl implements Registrar {
@@ -79,6 +113,7 @@ public final class ContextImpl implements $Context {
             return list.get(0);
         }
         return (annotation, c, object) -> {
+            //noinspection ForLoopReplaceableByForEach, it's known that "list" is RandomAccess
             for (int i = 0, len = list.size(); i < len; i++) {
                 object = list.get(i).transform(annotation, c, object);
             }
@@ -180,9 +215,9 @@ public final class ContextImpl implements $Context {
         }
     }
 
-    private static final ConcurrentMap<Class, $Instantiator> instantiators = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class, $Instantiator> instantiators = new ConcurrentHashMap<>();
     private $CdiObject instantiate($Descriptor d) {
-        return instantiators.computeIfAbsent(d.c, this::getInstantiator).$create(this, d.p);
+        return instantiators.computeIfAbsent(d.c, this::getInstantiator).$create(d.p);
     }
 
     private $Instantiator getInstantiator(Class<?> clazz) {
