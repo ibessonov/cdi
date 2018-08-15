@@ -1,4 +1,4 @@
-package com.github.ibessonov.cdi;
+package com.github.ibessonov.cdi.annotations;
 
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;

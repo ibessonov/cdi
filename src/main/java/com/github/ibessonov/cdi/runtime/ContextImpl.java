@@ -1,6 +1,10 @@
 package com.github.ibessonov.cdi.runtime;
 
-import com.github.ibessonov.cdi.*;
+import com.github.ibessonov.cdi.Extension;
+import com.github.ibessonov.cdi.Provider;
+import com.github.ibessonov.cdi.Registrar;
+import com.github.ibessonov.cdi.annotations.MethodTransformer;
+import com.github.ibessonov.cdi.annotations.ValueTransformer;
 import com.github.ibessonov.cdi.exceptions.CdiException;
 import com.github.ibessonov.cdi.exceptions.ImpossibleError;
 import com.github.ibessonov.cdi.internal.$CdiObject;
@@ -32,8 +36,8 @@ public final class ContextImpl implements $Context {
     private static final AtomicInteger counter = new AtomicInteger();
     private static final Map<String, WeakReference<ContextImpl>> contexts = new ConcurrentHashMap<>();
 
-    final Map<Class, ArrayList<ValueTransformer>> valueTransformers = new HashMap<>();
-    final Map<Class, ArrayList<MethodTransformer>> methodTransformers = new HashMap<>();
+    final Map<Class, ArrayList<ValueTransformer<?>>> valueTransformers = new HashMap<>();
+    final Map<Class, ArrayList<MethodTransformer<?>>> methodTransformers = new HashMap<>();
     final Map<Class, Provider> providers = new HashMap<>();
     final String contextId = Integer.toString(counter.getAndIncrement());
     final InheritorGenerator generator;
@@ -45,10 +49,10 @@ public final class ContextImpl implements $Context {
                 extension.register(registrar);
             }
             // reduce memory consumption
-            for (ArrayList<ValueTransformer> list : valueTransformers.values()) {
+            for (ArrayList<ValueTransformer<?>> list : valueTransformers.values()) {
                 list.trimToSize();
             }
-            for (ArrayList<MethodTransformer> list : methodTransformers.values()) {
+            for (ArrayList<MethodTransformer<?>> list : methodTransformers.values()) {
                 list.trimToSize();
             }
         }
@@ -105,9 +109,23 @@ public final class ContextImpl implements $Context {
         return valueTransformers.containsKey(clazz);
     }
 
+    public void assertValueCanBeTransformed(Class<? extends Annotation> clazz, Class<?> parameterType) throws CdiException {
+        ArrayList<ValueTransformer<?>> valueTransformers = this.valueTransformers.get(clazz);
+        if (valueTransformers != null) {
+            for (ValueTransformer<?> transformer : valueTransformers) {
+                if (!transformer.isApplicable(parameterType)) {
+                    String message = "ValueTransformer '" + transformer + "'"
+                            + " for annotation '" + clazz.getSimpleName() + "'"
+                            + " cannot be applied to type '" + parameterType.getSimpleName() + "'";
+                    throw new CdiException(message);
+                }
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public <T extends Annotation> ValueTransformer<T> getValueTransformer(Class<T> clazz) {
-        ArrayList<ValueTransformer> list = this.valueTransformers.get(clazz);
+        List<? extends ValueTransformer<T>> list = (List<? extends ValueTransformer<T>>) valueTransformers.get(clazz);
         if (list == null) return null;
         if (list.size() == 1) {
             return list.get(0);
@@ -127,7 +145,7 @@ public final class ContextImpl implements $Context {
 
     @SuppressWarnings("unchecked")
     public <T extends Annotation> MethodTransformer<T> getMethodTransformer(Class<T> clazz) {
-        ArrayList<MethodTransformer> list = this.methodTransformers.get(clazz);
+        List<? extends MethodTransformer<T>> list = (List<? extends MethodTransformer<T>>) methodTransformers.get(clazz);
         if (list == null) return null;
         if (list.size() == 1) {
             return list.get(0);

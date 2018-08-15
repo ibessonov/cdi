@@ -1,7 +1,7 @@
 package com.github.ibessonov.cdi.runtime;
 
-import com.github.ibessonov.cdi.MethodTransformer;
-import com.github.ibessonov.cdi.ValueTransformer;
+import com.github.ibessonov.cdi.annotations.MethodTransformer;
+import com.github.ibessonov.cdi.annotations.ValueTransformer;
 import com.github.ibessonov.cdi.exceptions.ImpossibleError;
 import com.github.ibessonov.cdi.internal.$Context;
 

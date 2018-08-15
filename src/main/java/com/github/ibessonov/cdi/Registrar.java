@@ -1,5 +1,8 @@
 package com.github.ibessonov.cdi;
 
+import com.github.ibessonov.cdi.annotations.MethodTransformer;
+import com.github.ibessonov.cdi.annotations.ValueTransformer;
+
 import java.lang.annotation.Annotation;
 
 /**

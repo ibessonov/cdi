@@ -19,6 +19,11 @@ public class CdiException extends RuntimeException {
         this.type = type;
     }
 
+    public CdiException(String message) {
+        super(message);
+        this.type = null;
+    }
+
     public CdiErrorType getType() {
         return type;
     }

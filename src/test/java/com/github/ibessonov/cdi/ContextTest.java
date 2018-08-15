@@ -1,9 +1,6 @@
 package com.github.ibessonov.cdi;
 
-import com.github.ibessonov.cdi.annotations.Inject;
-import com.github.ibessonov.cdi.annotations.NotNull;
-import com.github.ibessonov.cdi.annotations.Scoped;
-import com.github.ibessonov.cdi.annotations.Trimmed;
+import com.github.ibessonov.cdi.annotations.*;
 import com.github.ibessonov.cdi.exceptions.CdiException;
 import com.github.ibessonov.cdi.internal.$CdiObject;
 import com.github.ibessonov.cdi.internal.$Descriptor;
@@ -65,14 +62,26 @@ public class ContextTest extends CdiTest {
 
         @Override
         public void register(Registrar registrar) {
-            registrar.registerValueTransformer(NotNull.class, (annotation, clazz, object) ->
-                Objects.requireNonNull(object, annotation.value())
-            );
-            registrar.registerValueTransformer(Trimmed.class, (annotation, clazz, object) -> {
-                if (String.class == clazz) {
+            registrar.registerValueTransformer(NotNull.class, new ValueTransformer<NotNull>() {
+                @Override
+                public Object transform(NotNull annotation, Class<?> clazz, Object object) {
+                    return Objects.requireNonNull(object, annotation.value());
+                }
+
+                @Override
+                public boolean isApplicable(Class<?> clazz) {
+                    return !clazz.isPrimitive();
+                }
+            });
+            registrar.registerValueTransformer(Trimmed.class, new ValueTransformer<Trimmed>() {
+                @Override
+                public Object transform(Trimmed annotation, Class<?> clazz, Object object) {
                     return ((String) object).trim();
-                } else {
-                    throw new IllegalArgumentException(clazz.getName());
+                }
+
+                @Override
+                public boolean isApplicable(Class<?> clazz) {
+                    return clazz == String.class;
                 }
             });
             registrar.registerMethodTransformer(Traced.class, (annotation, method, handle) -> {

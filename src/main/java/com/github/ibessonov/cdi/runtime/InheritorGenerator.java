@@ -203,6 +203,7 @@ final class InheritorGenerator {
     private StMethod generateTransformedMethod(ClassInfo ci, Method method, StExpression methodBody) {
         Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         Type[] genericParameterTypes = method.getGenericParameterTypes();
+        Class<?>[] parameterTypes = method.getParameterTypes();
         List<StStatement> statements = new ArrayList<>();
         boolean override = false;
         for (int i = 0, parametersCount = parameterAnnotations.length; i < parametersCount; i++) {
@@ -211,6 +212,7 @@ final class InheritorGenerator {
                     statements.add(_assignMethodParam(i, getLookupExpression(ci, genericParameterTypes[i])));
                     override = true;
                 }
+                context.assertValueCanBeTransformed(parameterAnnotation.annotationType(), parameterTypes[i]);
                 if (!override && context.valueTransformerRegistered(parameterAnnotation.annotationType())) {
                     override = true;
                 }
