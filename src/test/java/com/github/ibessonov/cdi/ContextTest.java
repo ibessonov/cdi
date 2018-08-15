@@ -62,17 +62,9 @@ public class ContextTest extends CdiTest {
 
         @Override
         public void register(Registrar registrar) {
-            registrar.registerValueTransformer(NotNull.class, new ValueTransformer<NotNull>() {
-                @Override
-                public Object transform(NotNull annotation, Class<?> clazz, Object object) {
-                    return Objects.requireNonNull(object, annotation.value());
-                }
-
-                @Override
-                public boolean isApplicable(Class<?> clazz) {
-                    return !clazz.isPrimitive();
-                }
-            });
+            registrar.registerValueTransformer(NotNull.class, (annotation, clazz, object) ->
+                Objects.requireNonNull(object, annotation.value())
+            );
             registrar.registerValueTransformer(Trimmed.class, new ValueTransformer<Trimmed>() {
                 @Override
                 public Object transform(Trimmed annotation, Class<?> clazz, Object object) {

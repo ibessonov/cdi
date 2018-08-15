@@ -125,7 +125,7 @@ public final class ContextImpl implements $Context {
 
     @SuppressWarnings("unchecked")
     public <T extends Annotation> ValueTransformer<T> getValueTransformer(Class<T> clazz) {
-        List<? extends ValueTransformer<T>> list = (List<? extends ValueTransformer<T>>) valueTransformers.get(clazz);
+        List<? extends ValueTransformer<T>> list = (List) valueTransformers.get(clazz);
         if (list == null) return null;
         if (list.size() == 1) {
             return list.get(0);
@@ -145,7 +145,7 @@ public final class ContextImpl implements $Context {
 
     @SuppressWarnings("unchecked")
     public <T extends Annotation> MethodTransformer<T> getMethodTransformer(Class<T> clazz) {
-        List<? extends MethodTransformer<T>> list = (List<? extends MethodTransformer<T>>) methodTransformers.get(clazz);
+        List<? extends MethodTransformer<T>> list = (List) methodTransformers.get(clazz);
         if (list == null) return null;
         if (list.size() == 1) {
             return list.get(0);
