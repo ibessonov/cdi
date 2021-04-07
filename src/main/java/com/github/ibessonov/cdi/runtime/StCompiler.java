@@ -1,13 +1,12 @@
 package com.github.ibessonov.cdi.runtime;
 
 import com.github.ibessonov.cdi.runtime.st.*;
-import org.objectweb.asm.*;
-
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.HashMap;
 import java.util.Map;
+import org.objectweb.asm.*;
 
 import static com.github.ibessonov.cdi.util.ClassUtil.isPrimitive;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;

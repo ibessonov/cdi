@@ -58,13 +58,13 @@ public final class ContextImpl implements $Context {
         }
         contexts.put(contextId, new WeakReference<>(this));
 
-        String contextHolderName = ContextImpl.class.getPackage() + ".$ContextHolder$" + contextId;
+        String contextHolderName = ContextImpl.class.getPackage().getName() + ".$ContextHolder$" + contextId;
         defineClass(compile(_class(_named(contextHolderName), _extends(Object.class), _implements(), _withFields(
             _staticField("$context", $Context.class)
         ), _withMethods(
             _staticMethod(_named("<clinit>"), _withoutParameterTypes(), _returnsNothing(), _withBody(
                 _assignStatic(_named("$context"), _ofClass(contextHolderName), _withType($Context.class), _value(
-                    _invokeDynamic("", _withoutParameterTypes(), _returns($Context.class),
+                    _invokeDynamic("context", _withoutParameterTypes(), _returns($Context.class),
                         "context", CdiMetafactory.class, _withoutParameters(), contextId
                     )
                 ))
